@@ -38,6 +38,11 @@ log = logging.getLogger(__name__)
 NB_FN_TEMPLATE = "nb_function_template.jinja2"
 PIPELINE_TEMPLATE = "pipeline_template.jinja2"
 
+# NOTE: These strings are duplicated in the frontend (volumeUtils.ts).
+# In the future, both sides should use a shared JSON
+PVC_ACCESS_MODE_RWO = "ReadWriteOnce"
+PVC_ACCESS_MODE_RWOP = "ReadWriteOncePod"
+
 # Generated DSL modules are named after their notebook, behind this prefix, so
 # that a notebook called `json.ipynb` cannot shadow a module the DSL imports.
 MODULE_PREFIX = "kale_notebook_"
@@ -182,7 +187,7 @@ class Compiler:
         except Exception:
             return
 
-        rwo_modes = {"ReadWriteOnce", "ReadWriteOncePod"}
+        rwo_modes = {PVC_ACCESS_MODE_RWO, PVC_ACCESS_MODE_RWOP}
         for vol in pvc_volumes:
             try:
                 modes = k8sutils.get_pvc_access_modes(vol.name, namespace)

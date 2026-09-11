@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// NOTE: These strings are duplicated in the backend (kale/compiler.py).
+// In the future, both sides should use a shared JSON
+export const PVC_ACCESS_MODE_RWO = 'ReadWriteOnce';
+export const PVC_ACCESS_MODE_RWOP = 'ReadWriteOncePod';
+
 /** Derive KALE_VOLUME_<SCREAMING_SNAKE_CASE> from a PVC name. */
 export function deriveEnvVarName(pvcName: string): string {
   return 'KALE_VOLUME_' + pvcName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -100,8 +105,7 @@ export function isRestrictedAccessMode(modes: string[] | undefined): boolean {
   if (!modes || modes.length === 0) {
     return false;
   }
-  return modes.some(m => m === 'ReadWriteOnce' || m === 'ReadWriteOncePod');
+  return modes.some(
+    m => m === PVC_ACCESS_MODE_RWO || m === PVC_ACCESS_MODE_RWOP,
+  );
 }
-
-/** @deprecated Use isRestrictedAccessMode instead */
-export const isReadWriteOnce = isRestrictedAccessMode;
