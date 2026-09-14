@@ -428,6 +428,37 @@ def test_notebook_named_like_a_module_is_safe(tmp_path, monkeypatch):
     assert f"from {_module_name('root', 'json')} import" in open(dsl_path).read()
 
 
+def test_two_compositions_in_one_directory_do_not_collide(tmp_path, monkeypatch):
+    """Generated modules are keyed on the notebook, not on its pipeline name, so
+    two compositions compiled side by side keep their own generated files even
+    when they share a pipeline name and reference the same notebook."""
+    _write_nb(tmp_path / "shared.ipynb", "shared", [(["step:work"], "dataset = [1]")])
+    for root_file in ("first.ipynb", "second.ipynb"):
+        _write_nb(tmp_path / root_file, "same-name", [_ref("shared", "./shared.ipynb")])
+
+    monkeypatch.chdir(tmp_path)
+    for root_file in ("first.ipynb", "second.ipynb"):
+        processor = NotebookProcessor(str(tmp_path / root_file), {"experiment_name": "test"})
+        Compiler(processor.run(), processor.get_imports_and_functions()).compile()
+
+    assert (tmp_path / ".kale" / f"{_module_name('first', 'shared')}.py").exists()
+    assert (tmp_path / ".kale" / f"{_module_name('second', 'shared')}.py").exists()
+
+
+def test_a_notebook_without_a_pipeline_name_is_named_after_itself(tmp_path, monkeypatch):
+    """A notebook that does not name its pipeline compiles under its own file
+    name, so two of them do not land on the same generated files."""
+    notebook = tmp_path / "my_flow.ipynb"
+    _write_nb(notebook, "placeholder", [(["step:only"], "x = 1")])
+    metadata = nbf.read(str(notebook), as_version=4)
+    del metadata.metadata["kubeflow_notebook"]["pipeline_name"]
+    nbf.write(metadata, str(notebook))
+
+    monkeypatch.chdir(tmp_path)
+    processor = NotebookProcessor(str(notebook), {"experiment_name": "test"})
+    assert processor.pipeline.config.pipeline_name == "my-flow"
+
+
 def test_ui_compile_path_composes(tmp_path, monkeypatch):
     """R1 (kubeflow/kale#867 review): the RPC path the Kale panel uses is
     NotebookProcessor plus Compiler, with no CLI involved. It must compose the

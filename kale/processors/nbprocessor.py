@@ -154,6 +154,12 @@ class NotebookConfig(PipelineConfig):
 
     def _preprocess(self, kwargs):
         kwargs["steps_defaults"] = self._parse_steps_defaults(kwargs.get("steps_defaults"))
+        if not kwargs.get("pipeline_name") and kwargs.get("notebook_path"):
+            # a notebook that does not name its pipeline is named after itself,
+            # so that two notebooks in one directory do not compile to the same
+            # set of generated files
+            stem = os.path.splitext(os.path.basename(kwargs["notebook_path"]))[0]
+            kwargs["pipeline_name"] = utils.sanitize_k8s_name(stem)
 
     def _parse_steps_defaults(self, steps_defaults):
         """Parse common step configuration defined in the metadata."""
