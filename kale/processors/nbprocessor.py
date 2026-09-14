@@ -296,6 +296,9 @@ class NotebookProcessor:
         )
 
         self.parse_pipeline_parameters(pipeline_parameters_source)
+        # a referenced notebook is processed before this notebook's own
+        # parameters are known, so they are handed down here
+        self.propagate_pipeline_parameters()
         # get a list of variables that need to be logged as pipeline metrics
         pipeline_metrics = astutils.parse_metrics_print_statements(pipeline_metrics_source)
 
@@ -548,6 +551,24 @@ class NotebookProcessor:
                 "Cycle detected in the composition graph. Each cell must appear below "
                 "the cells that produce the variables it uses."
             )
+
+    def propagate_pipeline_parameters(self):
+        """Hand this notebook's pipeline parameters to the notebooks it references.
+
+        A composition exposes one set of parameters, the root's, so a step in a
+        referenced notebook that uses one has to receive it like any other step
+        does. Where both notebooks declare the same name the root's value wins,
+        since that is the one a run is submitted with; the referenced
+        notebook's own value stays its default when it is compiled on its own.
+        """
+        if not self.pipeline.pipeline_parameters:
+            return
+        for node in self.pipeline.steps:
+            if isinstance(node, SubPipeline):
+                node.pipeline.pipeline_parameters = {
+                    **node.pipeline.pipeline_parameters,
+                    **self.pipeline.pipeline_parameters,
+                }
 
     def propagate_subpipeline_boundaries(self):
         """Push a referenced notebook's boundary variables onto its own steps.
