@@ -20,7 +20,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { INotebookTracker } from '@jupyterlab/notebook';
+import { INotebookTracker, NotebookPanel } from '@jupyterlab/notebook';
 import { Kernel } from '@jupyterlab/services';
 import {
   DefaultState,
@@ -62,6 +62,8 @@ export interface ILoaderSetters {
   setDeployPanelCustomLinks: Dispatch<SetStateAction<IDeployPanelCustomLinks>>;
   metadataRef: MutableRefObject<IKaleNotebookMetadata>;
   experimentsRef: MutableRefObject<IExperiment[]>;
+  isLoadingRef: MutableRefObject<boolean>;
+  loadedNotebookRef: MutableRefObject<NotebookPanel | null>;
   resetForNoNotebook: () => void;
 }
 
@@ -102,6 +104,18 @@ export function useNotebookMetadata({
   const experimentsRef = useRef(experiments);
   experimentsRef.current = experiments;
 
+  // True while a notebook is being loaded/switched. The metadata state changes
+  // the loader makes during a load are programmatic (they reflect what was read
+  // from the notebook), not user edits, so persistence must not write them back
+  // to the notebook file while this is set.
+  const isLoadingRef = useRef(false);
+
+  // The notebook the current metadata state belongs to. Persistence writes to
+  // this notebook rather than to tracker.currentWidget, so a metadata edit is
+  // always saved to the notebook it was made against, even if the active tab
+  // has since changed.
+  const loadedNotebookRef = useRef<NotebookPanel | null>(null);
+
   // --- updaters (exposed to LeftPanel form inputs) ---
 
   const updateExperiment = useCallback((experiment: IExperiment) => {
@@ -128,15 +142,26 @@ export function useNotebookMetadata({
     setMetadata(prev => ({ ...prev, volumes }));
   }, []);
 
+  // Build a fresh default metadata object so we never mutate (or hand out a
+  // reference to) the shared DefaultState.metadata.
+  const freshDefaultMetadata = useCallback(
+    (): IKaleNotebookMetadata => ({
+      ...defaultMetadata,
+      experiment: { ...defaultMetadata.experiment },
+    }),
+    [],
+  );
+
   const resetForNoNotebook = useCallback(() => {
-    setMetadata(defaultMetadata);
+    loadedNotebookRef.current = null;
+    setMetadata(freshDefaultMetadata());
     setExperiments([]);
     setGettingExperiments(false);
     setIsEnabled(false);
     setNamespace('');
     setKfpUiHost('');
     setDeployPanelCustomLinks({ upload: '', run: '' });
-  }, []);
+  }, [freshDefaultMetadata]);
 
   // --- composed hooks ---
 
@@ -156,6 +181,8 @@ export function useNotebookMetadata({
       setDeployPanelCustomLinks,
       metadataRef,
       experimentsRef,
+      isLoadingRef,
+      loadedNotebookRef,
       resetForNoNotebook,
     },
   });
@@ -167,9 +194,10 @@ export function useNotebookMetadata({
   });
 
   useNotebookMetadataPersistence({
-    tracker,
     metadata,
     metadataKey: KALE_NOTEBOOK_METADATA_KEY,
+    isLoadingRef,
+    loadedNotebookRef,
   });
 
   return {

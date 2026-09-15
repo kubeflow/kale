@@ -12,38 +12,60 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useEffect, useRef } from 'react';
-import { INotebookTracker } from '@jupyterlab/notebook';
+import { MutableRefObject, useEffect, useRef } from 'react';
+import { NotebookPanel } from '@jupyterlab/notebook';
 import NotebookUtils from '../../lib/NotebookUtils';
 import { IKaleNotebookMetadata } from '../LeftPanelTypes';
+import { resolveMetadataPersistence } from './metadataPersistenceDecision';
 
 interface IUseNotebookMetadataPersistenceParams {
-  tracker: INotebookTracker;
   metadata: IKaleNotebookMetadata;
   metadataKey: string;
+  // Set while the loader is populating state from a notebook. Metadata changes
+  // during that window are programmatic (a reflection of what was read), not
+  // user edits, so they must not be written back to the notebook file.
+  isLoadingRef: MutableRefObject<boolean>;
+  // Identifies the notebook the current metadata state belongs to. The write
+  // targets this notebook, NOT tracker.currentWidget: the persistence effect
+  // runs asynchronously (after paint), so by the time it runs the user may
+  // have switched tabs and tracker.currentWidget may point at a different
+  // notebook. Writing to currentWidget would leak one notebook's metadata into
+  // another. Writing to the owning notebook keeps each notebook's data with it.
+  loadedNotebookRef: MutableRefObject<NotebookPanel | null>;
 }
 
 /**
- * Hook that writes the current metadata state back to the active notebook's
+ * Hook that writes the current metadata state back to its owning notebook's
  * .ipynb file whenever it changes, keeping the form and the file in sync.
  */
 export function useNotebookMetadataPersistence({
-  tracker,
   metadata,
   metadataKey,
+  isLoadingRef,
+  loadedNotebookRef,
 }: IUseNotebookMetadataPersistenceParams) {
   const prevMetadataJsonRef = useRef(JSON.stringify(metadata));
 
   useEffect(() => {
     const json = JSON.stringify(metadata);
-    if (json !== prevMetadataJsonRef.current) {
-      prevMetadataJsonRef.current = json;
-      const notebook = tracker.currentWidget;
-      if (notebook) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { base_image: _baseImage, ...metadataToPersist } = metadata;
-        NotebookUtils.setMetaData(notebook, metadataKey, metadataToPersist);
-      }
+    const decision = resolveMetadataPersistence({
+      json,
+      prevJson: prevMetadataJsonRef.current,
+      isLoading: isLoadingRef.current,
+      loadedNotebook: loadedNotebookRef.current,
+    });
+    // Always track the latest metadata we have seen (even when we skip the
+    // write) so that, once loading finishes, the next genuine user edit is
+    // detected as a change.
+    prevMetadataJsonRef.current = json;
+    if (decision.shouldWrite && decision.target) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { base_image: _baseImage, ...metadataToPersist } = metadata;
+      NotebookUtils.setMetaData(
+        decision.target,
+        metadataKey,
+        metadataToPersist,
+      );
     }
-  }, [metadata, tracker, metadataKey]);
+  }, [metadata, metadataKey, isLoadingRef, loadedNotebookRef]);
 }
