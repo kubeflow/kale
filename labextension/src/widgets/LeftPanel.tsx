@@ -32,6 +32,7 @@ import { KaleEmptyState } from './KaleEmptyState';
 import { KFPStatusBadge } from '../components/KFPStatusBadge';
 import kaleLogo from '../../style/icons/kale.svg';
 import { useKfpStatus } from './hooks/useKfpStatus';
+import { useActiveNotebook } from './hooks/useActiveNotebook';
 import { useNotebookMetadata } from './hooks/useNotebookMetadata';
 import { useDeployment } from './hooks/useDeployment';
 import { setLeftPanelCallbacks } from '../commands/kaleToolbar';
@@ -89,6 +90,8 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
   );
 
   const kfpStatus = useKfpStatus(kernel, backend);
+
+  const activeNotebook = useActiveNotebook(tracker);
 
   const notebookMeta = useNotebookMetadata({
     tracker,
@@ -220,8 +223,6 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
       label="Enable Pipeline Caching"
     />
   );
-
-  const activeNotebook = tracker.currentWidget;
 
   return (
     <ThemeProvider theme={theme}>
