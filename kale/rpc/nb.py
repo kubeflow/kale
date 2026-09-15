@@ -235,17 +235,28 @@ def get_namespace(request):
 def list_pvcs(request):
     """List PersistentVolumeClaims available in the current namespace.
 
-    Returns a sorted list of PVC names. On any exception (e.g. no cluster
-    access, missing service-account token) returns an empty list so the UI
-    combobox degrades gracefully without surfacing an error to the user.
+    Returns a sorted list of dicts with PVC info:
+    ``{"name": <pvc-name>, "access_modes": ["ReadWriteOnce", ...]}``
+
+    On any exception (e.g. no cluster access, missing service-account token)
+    returns an empty list so the UI combobox degrades gracefully.
     """
     log = request.log if hasattr(request, "log") else logger
     try:
         namespace = podutils.get_namespace()
         pvc_list = k8sutils.get_v1_client().list_namespaced_persistent_volume_claim(namespace)
-        names = sorted(pvc.metadata.name for pvc in pvc_list.items)
-        log.info("Found %d PVC(s) in namespace '%s'", len(names), namespace)
-        return names
+        pvcs = sorted(
+            [
+                {
+                    "name": pvc.metadata.name,
+                    "access_modes": list(pvc.spec.access_modes or []),
+                }
+                for pvc in pvc_list.items
+            ],
+            key=lambda p: p["name"],
+        )
+        log.info("Found %d PVC(s) in namespace '%s'", len(pvcs), namespace)
+        return pvcs
     except Exception as e:
         log.warning("Could not list PVCs, returning empty list. Reason: %s", e)
         return []
@@ -254,8 +265,9 @@ def list_pvcs(request):
 def list_notebook_volumes(request):
     """List PVCs currently mounted on the notebook pod.
 
-    Returns a sorted list of ``{"name": <pvc-name>, "mount_point": <path>}``
-    dicts — one entry per PVC mount found across all containers in the pod.
+    Returns a sorted list of dicts:
+    ``{"name": <pvc-name>, "mount_point": <path>, "access_modes": [...]}``
+
     Returns an empty list on any error so the UI dialog degrades gracefully.
     """
     log = request.log if hasattr(request, "log") else logger
@@ -273,9 +285,11 @@ def list_notebook_volumes(request):
         for container in pod.spec.containers or []:
             for mount in container.volume_mounts or []:
                 if mount.name in pvc_by_vol_name and mount.name not in results:
+                    pvc_name = pvc_by_vol_name[mount.name]
                     results[mount.name] = {
-                        "name": pvc_by_vol_name[mount.name],
+                        "name": pvc_name,
                         "mount_point": mount.mount_path,
+                        "access_modes": k8sutils.get_pvc_access_modes(pvc_name, namespace),
                     }
 
         volumes = sorted(results.values(), key=lambda v: v["name"])

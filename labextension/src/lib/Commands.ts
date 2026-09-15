@@ -392,7 +392,7 @@ export default class Commands {
     }
   };
 
-  listPvcs = async (): Promise<string[]> => {
+  listPvcs = async (): Promise<Array<{ name: string; access_modes: string[] }>> => {
     try {
       const result = await _legacy_executeRpc(
         this._notebook,
@@ -406,7 +406,9 @@ export default class Commands {
     }
   };
 
-  listNotebookVolumes = async (): Promise<Array<{ name: string; mount_point: string }>> => {
+  listNotebookVolumes = async (): Promise<
+    Array<{ name: string; mount_point: string; access_modes?: string[] }>
+  > => {
     try {
       const result = await _legacy_executeRpc(
         this._notebook,

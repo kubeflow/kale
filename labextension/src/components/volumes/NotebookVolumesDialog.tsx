@@ -31,7 +31,11 @@ import Typography from '@mui/material/Typography';
 import CloseIcon from '@mui/icons-material/Close';
 import { IVolumeConfig } from '../../widgets/LeftPanelTypes';
 import Commands from '../../lib/Commands';
-import { deriveEnvVarName, INotebookVolume } from './volumeUtils';
+import {
+  deriveEnvVarName,
+  formatAccessModes,
+  INotebookVolume,
+} from './volumeUtils';
 
 interface INotebookVolumesDialogProps {
   open: boolean;
@@ -150,48 +154,56 @@ export const NotebookVolumesDialog: React.FC<INotebookVolumesDialogProps> = ({
               Select all
             </Button>
             <List dense disablePadding>
-              {notebookVolumes.map(vol => (
-                <ListItem
-                  key={vol.name}
-                  disableGutters
-                  className="kale-nb-volume-item"
-                >
-                  <Checkbox
-                    size="small"
-                    checked={selected.has(vol.name)}
-                    onChange={() => toggleVolume(vol.name)}
-                  />
-                  <span className="kale-nb-volume-label">
-                    <span className="kale-nb-volume-name">{vol.name}</span>
-                    <span className="kale-nb-volume-mount">
-                      {vol.mount_point}
-                    </span>
-                  </span>
-                  <Tooltip
-                    title={
-                      selected.has(vol.name)
-                        ? `Expose as ${deriveEnvVarName(vol.name)}`
-                        : 'Select this volume first to expose as env var'
-                    }
+              {notebookVolumes.map(vol => {
+                const modes = formatAccessModes(vol.access_modes);
+                return (
+                  <ListItem
+                    key={vol.name}
+                    disableGutters
+                    className="kale-nb-volume-item"
                   >
-                    <span>
-                      <Checkbox
-                        size="small"
-                        icon={<span className="kale-envvar-icon">env</span>}
-                        checkedIcon={
-                          <span className="kale-envvar-icon kale-envvar-icon-checked">
-                            env
-                          </span>
-                        }
-                        checked={envVarSet.has(vol.name)}
-                        disabled={!selected.has(vol.name)}
-                        onChange={() => toggleEnvVar(vol.name)}
-                        aria-label={`Expose ${vol.name} as env var`}
-                      />
+                    <Checkbox
+                      size="small"
+                      checked={selected.has(vol.name)}
+                      onChange={() => toggleVolume(vol.name)}
+                    />
+                    <span className="kale-nb-volume-label">
+                      <span className="kale-nb-volume-name">
+                        {vol.name}
+                        {modes && (
+                          <span className="kale-pvc-access-mode">{modes}</span>
+                        )}
+                      </span>
+                      <span className="kale-nb-volume-mount">
+                        {vol.mount_point || '(specify mount path)'}
+                      </span>
                     </span>
-                  </Tooltip>
-                </ListItem>
-              ))}
+                    <Tooltip
+                      title={
+                        selected.has(vol.name)
+                          ? `Expose as ${deriveEnvVarName(vol.name)}`
+                          : 'Select this volume first to expose as env var'
+                      }
+                    >
+                      <span>
+                        <Checkbox
+                          size="small"
+                          icon={<span className="kale-envvar-icon">env</span>}
+                          checkedIcon={
+                            <span className="kale-envvar-icon kale-envvar-icon-checked">
+                              env
+                            </span>
+                          }
+                          checked={envVarSet.has(vol.name)}
+                          disabled={!selected.has(vol.name)}
+                          onChange={() => toggleEnvVar(vol.name)}
+                          aria-label={`Expose ${vol.name} as env var`}
+                        />
+                      </span>
+                    </Tooltip>
+                  </ListItem>
+                );
+              })}
             </List>
             <Typography
               variant="caption"

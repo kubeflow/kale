@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NotebookPanel } from '@jupyterlab/notebook';
 import { Kernel } from '@jupyterlab/services';
 import Button from '@mui/material/Button';
@@ -21,7 +21,8 @@ import AddIcon from '@mui/icons-material/Add';
 import { IVolumeConfig } from '../widgets/LeftPanelTypes';
 import { VolumeRow } from './volumes/VolumeRow';
 import { AddVolumeDialog } from './volumes/AddVolumeDialog';
-import { deriveEnvVarName } from './volumes/volumeUtils';
+import { deriveEnvVarName, IPvcInfo } from './volumes/volumeUtils';
+import Commands from '../lib/Commands';
 
 interface IVolumesPanelProps {
   volumes: IVolumeConfig[];
@@ -39,7 +40,33 @@ export const VolumesPanel: React.FC<IVolumesPanelProps> = ({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [copiedEnvVar, setCopiedEnvVar] = useState<string | null>(null);
+  const [pvcAccessModes, setPvcAccessModes] = useState<Map<string, string[]>>(
+    new Map(),
+  );
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getCommands = useCallback(
+    () => (notebook ? new Commands(notebook, kernel) : null),
+    [notebook, kernel],
+  );
+
+  // Fetch PVC access modes for display
+  useEffect(() => {
+    const cmds = getCommands();
+    if (!cmds) {
+      return;
+    }
+    cmds
+      .listPvcs()
+      .then((pvcs: IPvcInfo[]) => {
+        const map = new Map<string, string[]>();
+        for (const pvc of pvcs) {
+          map.set(pvc.name, pvc.access_modes);
+        }
+        setPvcAccessModes(map);
+      })
+      .catch(() => {});
+  }, [getCommands]);
 
   useEffect(() => {
     return () => {
@@ -131,6 +158,7 @@ export const VolumesPanel: React.FC<IVolumesPanelProps> = ({
             <VolumeRow
               key={`${vol.name}:${vol.mount_point}`}
               vol={vol}
+              accessModes={pvcAccessModes.get(vol.name)}
               isDupMount={duplicateMountPaths.has(vol.mount_point)}
               isDupEnvVar={
                 !!vol.expose_as_env_var &&

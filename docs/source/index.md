@@ -124,6 +124,7 @@ concepts/compilation
 
 user-guide/annotating-notebooks
 user-guide/pipeline-parameters
+user-guide/volumes
 user-guide/running-pipelines
 user-guide/troubleshooting
 ```

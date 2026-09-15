@@ -35,8 +35,10 @@ import Commands from '../../lib/Commands';
 import {
   deriveEnvVarName,
   EMPTY_FORM,
+  formatAccessModes,
   getMountPathError,
   IAddFormState,
+  IPvcInfo,
 } from './volumeUtils';
 import { NotebookVolumesDialog } from './NotebookVolumesDialog';
 
@@ -72,9 +74,12 @@ export const AddVolumeDialog: React.FC<IAddVolumeDialogProps> = ({
   onAddMultiple,
 }) => {
   const [form, setForm] = useState<IAddFormState>(EMPTY_FORM);
-  const [pvcSuggestions, setPvcSuggestions] = useState<string[]>([]);
+  const [pvcSuggestions, setPvcSuggestions] = useState<IPvcInfo[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showNotebookDialog, setShowNotebookDialog] = useState(false);
+
+  // Helper to get PVC names for validation
+  const pvcNames = pvcSuggestions.map(p => p.name);
 
   const getCommands = useCallback(
     () => (notebook ? new Commands(notebook, kernel) : null),
@@ -144,8 +149,8 @@ export const AddVolumeDialog: React.FC<IAddVolumeDialogProps> = ({
 
   const pvcUnknown =
     form.name.trim() !== '' &&
-    pvcSuggestions.length > 0 &&
-    !pvcSuggestions.includes(form.name.trim());
+    pvcNames.length > 0 &&
+    !pvcNames.includes(form.name.trim());
 
   const canSubmit =
     form.name.trim() !== '' &&
@@ -217,6 +222,12 @@ export const AddVolumeDialog: React.FC<IAddVolumeDialogProps> = ({
               freeSolo
               forcePopupIcon
               options={pvcSuggestions}
+              getOptionLabel={opt => (typeof opt === 'string' ? opt : opt.name)}
+              getOptionKey={opt => (typeof opt === 'string' ? opt : opt.name)}
+              isOptionEqualToValue={(opt, val) =>
+                (typeof opt === 'string' ? opt : opt.name) ===
+                (typeof val === 'string' ? val : val.name)
+              }
               value={form.name}
               loading={loadingSuggestions}
               loadingText="Loading PVCs…"
@@ -225,6 +236,24 @@ export const AddVolumeDialog: React.FC<IAddVolumeDialogProps> = ({
               onInputChange={(_e, value) =>
                 setForm(prev => ({ ...prev, name: value }))
               }
+              renderOption={(props, option) => {
+                const { key, ...rest } = props;
+                const isString = typeof option === 'string';
+                const name = isString ? option : option.name;
+                const modes = isString
+                  ? ''
+                  : formatAccessModes(option.access_modes);
+                return (
+                  <li key={key} {...rest}>
+                    <span className="kale-pvc-option">
+                      <span className="kale-pvc-name">{name}</span>
+                      {modes && (
+                        <span className="kale-pvc-access-mode">{modes}</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              }}
               renderInput={params => (
                 <TextField
                   {...params}

@@ -21,10 +21,11 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
 import StorageIcon from '@mui/icons-material/Storage';
 import { IVolumeConfig } from '../../widgets/LeftPanelTypes';
-import { deriveEnvVarName } from './volumeUtils';
+import { deriveEnvVarName, formatAccessModes } from './volumeUtils';
 
 interface IVolumeRowProps {
   vol: IVolumeConfig;
+  accessModes?: string[];
   isDupMount: boolean;
   isDupEnvVar: boolean;
   copiedEnvVar: string | null;
@@ -35,6 +36,7 @@ interface IVolumeRowProps {
 
 export const VolumeRow: React.FC<IVolumeRowProps> = ({
   vol,
+  accessModes,
   isDupMount,
   isDupEnvVar,
   copiedEnvVar,
@@ -43,6 +45,7 @@ export const VolumeRow: React.FC<IVolumeRowProps> = ({
   onCopyEnvVar,
 }) => {
   const envVarName = deriveEnvVarName(vol.name);
+  const modesLabel = formatAccessModes(accessModes);
 
   return (
     <div className="kale-volume-row">
@@ -50,6 +53,9 @@ export const VolumeRow: React.FC<IVolumeRowProps> = ({
         <StorageIcon fontSize="small" className="kale-volume-icon" />
         <span className="kale-volume-name" title={vol.name}>
           {vol.name}
+          {modesLabel && (
+            <span className="kale-pvc-access-mode">{modesLabel}</span>
+          )}
         </span>
         <span className="kale-volume-mount" title={vol.mount_point}>
           {vol.mount_point}

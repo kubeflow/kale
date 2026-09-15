@@ -25,6 +25,7 @@ import {
 } from '../LeftPanelTypes';
 import Commands from '../../lib/Commands';
 import NotebookUtils from '../../lib/NotebookUtils';
+import { isRestrictedAccessMode } from '../../components/volumes/volumeUtils';
 
 interface IUseDeploymentParams {
   tracker: INotebookTracker;
@@ -144,6 +145,43 @@ export function useDeployment({
     // outputPath comes from JupyterLab Settings; backend expects it as output_path.
     if (outputPath) {
       metadata.output_path = outputPath;
+    }
+
+    // Check for ReadWriteOnce volumes and warn the user
+    if (metadata.volumes && metadata.volumes.length > 0) {
+      try {
+        const pvcs = await commands.listPvcs();
+        const pvcModes = new Map(pvcs.map(p => [p.name, p.access_modes]));
+        const restrictedVolumes = metadata.volumes.filter(v =>
+          isRestrictedAccessMode(pvcModes.get(v.name)),
+        );
+
+        if (restrictedVolumes.length > 0) {
+          const confirmed = await NotebookUtils.showYesNoDialog(
+            'Volume Access Mode Warning',
+            [
+              'Pipeline has RWO/RWOP mounted volumes.',
+              '',
+              'ReadWriteOnce (RWO) volumes can only be mounted on one node. ' +
+                'ReadWriteOncePod (RWOP) volumes can only be mounted by one pod. ' +
+                'Parallel steps may fail if scheduled on different nodes or run concurrently.',
+              '',
+              'Consider using ReadWriteMany (RWX) volumes for parallel pipelines.',
+              '',
+              'Do you want to proceed anyway?',
+            ],
+            'Proceed',
+            'Cancel',
+          );
+
+          if (!confirmed) {
+            setRunDeployment(false);
+            return;
+          }
+        }
+      } catch {
+        // If we can't check PVC modes, proceed anyway (best effort)
+      }
     }
 
     const nbFilePath = getActiveNotebookPath();
