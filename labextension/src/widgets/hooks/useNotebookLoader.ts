@@ -120,20 +120,35 @@ export function useNotebookLoader({
         }
 
         setGettingExperiments(true);
-        const currentMeta = metadataRef.current;
-        const expResult = await commands.getExperiments(
-          currentMeta.experiment,
-          currentMeta.experiment_name,
-        );
-        fetchedExperiments = expResult.experiments;
+        // Fetching experiments requires KFP. When KFP is disconnected or still
+        // loading this rejects, but that must not abort the load: the notebook
+        // metadata below (pipeline name, description, experiment) is stored in
+        // the notebook file and is independent of KFP, so it must still be
+        // shown. Degrade to no experiments on failure and carry on.
+        try {
+          const currentMeta = metadataRef.current;
+          const expResult = await commands.getExperiments(
+            currentMeta.experiment,
+            currentMeta.experiment_name,
+          );
+          fetchedExperiments = expResult.experiments;
 
-        setExperiments(expResult.experiments);
-        setGettingExperiments(false);
-        setMetadata(prev => ({
-          ...prev,
-          experiment: expResult.experiment,
-          experiment_name: expResult.experiment_name,
-        }));
+          setExperiments(expResult.experiments);
+          setMetadata(prev => ({
+            ...prev,
+            experiment: expResult.experiment,
+            experiment_name: expResult.experiment_name,
+          }));
+        } catch (error) {
+          console.warn(
+            'Kale: could not fetch experiments (KFP may be unreachable); ' +
+              'showing notebook metadata without the experiment list.',
+            error,
+          );
+          setExperiments([]);
+        } finally {
+          setGettingExperiments(false);
+        }
       }
 
       if (notebookMetadata) {
