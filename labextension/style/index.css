@@ -909,3 +909,29 @@ a {
   border-color: var(--jp-info-color1);
   background: color-mix(in srgb, var(--jp-info-color1) 10%, transparent);
 }
+
+/* PVC access mode badges */
+.kale-pvc-access-mode {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--jp-ui-font-color2);
+  background: var(--jp-layout-color2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.kale-pvc-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.kale-pvc-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

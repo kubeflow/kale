@@ -75,16 +75,21 @@ def test_get_pipeline_parameters_source_skip(tmpdir, _rpc_request):
 
 
 def test_list_pvcs_returns_sorted_names(_rpc_request):
-    """list_pvcs returns a sorted list of PVC names from the cluster."""
+    """list_pvcs returns a sorted list of PVC info dicts from the cluster."""
 
-    def _make_pvc(name):
+    def _make_pvc(name, access_modes):
         pvc = MagicMock()
         pvc.metadata.name = name
+        pvc.spec.access_modes = access_modes
         return pvc
 
     mock_v1 = MagicMock()
     mock_v1.list_namespaced_persistent_volume_claim.return_value = MagicMock(
-        items=[_make_pvc("zebra-pvc"), _make_pvc("alpha-pvc"), _make_pvc("beta-pvc")]
+        items=[
+            _make_pvc("zebra-pvc", ["ReadWriteOnce"]),
+            _make_pvc("alpha-pvc", ["ReadWriteMany"]),
+            _make_pvc("beta-pvc", ["ReadOnlyMany"]),
+        ]
     )
 
     with (
@@ -93,7 +98,11 @@ def test_list_pvcs_returns_sorted_names(_rpc_request):
     ):
         result = nb.list_pvcs(_rpc_request)
 
-    assert result == ["alpha-pvc", "beta-pvc", "zebra-pvc"]
+    assert result == [
+        {"name": "alpha-pvc", "access_modes": ["ReadWriteMany"]},
+        {"name": "beta-pvc", "access_modes": ["ReadOnlyMany"]},
+        {"name": "zebra-pvc", "access_modes": ["ReadWriteOnce"]},
+    ]
     mock_v1.list_namespaced_persistent_volume_claim.assert_called_once_with("test-ns")
 
 
@@ -183,16 +192,20 @@ def test_list_notebook_volumes_returns_sorted_mounts(_rpc_request):
         ],
     )
 
+    def mock_access_modes(pvc_name, ns):
+        return {"alpha-pvc": ["ReadWriteMany"], "zebra-pvc": ["ReadWriteOnce"]}.get(pvc_name, [])
+
     with (
         patch("kale.rpc.nb.podutils.get_namespace", return_value="test-ns"),
         patch("kale.rpc.nb.podutils.get_pod_name", return_value="test-pod"),
         patch("kale.rpc.nb.podutils.get_pod", return_value=pod),
+        patch("kale.rpc.nb.k8sutils.get_pvc_access_modes", side_effect=mock_access_modes),
     ):
         result = nb.list_notebook_volumes(_rpc_request)
 
     assert result == [
-        {"name": "alpha-pvc", "mount_point": "/data/alpha"},
-        {"name": "zebra-pvc", "mount_point": "/data/zebra"},
+        {"name": "alpha-pvc", "mount_point": "/data/alpha", "access_modes": ["ReadWriteMany"]},
+        {"name": "zebra-pvc", "mount_point": "/data/zebra", "access_modes": ["ReadWriteOnce"]},
     ]
 
 
@@ -217,10 +230,13 @@ def test_list_notebook_volumes_ignores_non_pvc_volumes(_rpc_request):
         patch("kale.rpc.nb.podutils.get_namespace", return_value="test-ns"),
         patch("kale.rpc.nb.podutils.get_pod_name", return_value="test-pod"),
         patch("kale.rpc.nb.podutils.get_pod", return_value=pod),
+        patch("kale.rpc.nb.k8sutils.get_pvc_access_modes", return_value=["ReadWriteOnce"]),
     ):
         result = nb.list_notebook_volumes(_rpc_request)
 
-    assert result == [{"name": "data-pvc", "mount_point": "/data"}]
+    assert result == [
+        {"name": "data-pvc", "mount_point": "/data", "access_modes": ["ReadWriteOnce"]}
+    ]
 
 
 def test_list_notebook_volumes_dedups_across_containers(_rpc_request):
@@ -237,10 +253,13 @@ def test_list_notebook_volumes_dedups_across_containers(_rpc_request):
         patch("kale.rpc.nb.podutils.get_namespace", return_value="test-ns"),
         patch("kale.rpc.nb.podutils.get_pod_name", return_value="test-pod"),
         patch("kale.rpc.nb.podutils.get_pod", return_value=pod),
+        patch("kale.rpc.nb.k8sutils.get_pvc_access_modes", return_value=["ReadWriteMany"]),
     ):
         result = nb.list_notebook_volumes(_rpc_request)
 
-    assert result == [{"name": "data-pvc", "mount_point": "/data"}]
+    assert result == [
+        {"name": "data-pvc", "mount_point": "/data", "access_modes": ["ReadWriteMany"]}
+    ]
 
 
 def test_list_notebook_volumes_no_mounts(_rpc_request):
