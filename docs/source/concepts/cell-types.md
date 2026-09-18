@@ -17,6 +17,7 @@ editing the notebook JSON directly.
 | `pipeline-metrics`          | -              | `print()` statements in the cell are converted to KFP pipeline metrics. |
 | `step:<name>`               | `step:train_model`              | Declares (or appends to) a pipeline step named `<name>`.               |
 | `prev:<step_name>`          | `prev:load_data`                | Adds a dependency from the current step to `<step_name>`.              |
+| `notebook:<name>`           | `notebook:preprocessing`        | References another notebook, compiled into this pipeline as a nested sub-pipeline. The path lives in the cell's `notebook_path` metadata. |
 | `skip`                      | -                          | Cell is excluded from the pipeline entirely.                           |
 | `annotation:<key>:<value>`  | `annotation:team:ml`            | Adds a Kubernetes annotation to the step's pod.                        |
 | `label:<key>:<value>`       | `label:env:prod`                | Adds a Kubernetes label to the step's pod.                             |
@@ -118,6 +119,37 @@ model.fit(df.drop("y", axis=1), df["y"])
 ```
 
 You can add as many `prev:` tags as you want — one per dependency.
+
+### `notebook:<name>`
+
+References another notebook. The referenced notebook is compiled into the same
+pipeline as a nested sub-pipeline, with each of its own cells still visible as
+a step.
+
+Unlike every other tag, the value here does not carry the information Kale
+needs: the tag names the reference, and the **path lives in the cell's
+`notebook_path` metadata**, resolved relative to the notebook containing the
+cell.
+
+```json
+{
+  "metadata": {
+    "tags": ["notebook:preprocessing"],
+    "notebook_path": "./preprocessing.ipynb"
+  }
+}
+```
+
+The cell itself holds no code. Kale infers the ordering between referenced
+notebooks from the variables they share, exactly as it does between cells, so
+no `prev:` tag is involved.
+
+The `Notebook` cell type is hidden in the JupyterLab panel unless the **Enable
+composable notebooks** setting is on. That setting only controls the editor;
+a notebook that already contains a `notebook:` cell compiles either way.
+
+See [Composing Multiple Notebooks](composition.md) for the full picture,
+including the current limitations.
 
 ### Per-step configuration
 
