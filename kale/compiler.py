@@ -86,6 +86,26 @@ def _step_display_name(step_name: str) -> str:
     return f"{step_name.replace('_', '-')}-step"
 
 
+def _parameters_of(pipeline) -> list[dict]:
+    """A pipeline's parameters, as they appear in the generated code.
+
+    ``name`` is the variable a pipeline function declares, ``arg`` the keyword
+    a component receives it under.
+    """
+    parameters = []
+    for param_name, param in getattr(pipeline, "pipeline_parameters", {}).items():
+        if isinstance(param, PipelineParam):
+            parameters.append(
+                {
+                    "name": param_name.lower(),
+                    "arg": _clean_param_name(param_name),
+                    "type": param.param_type or "str",
+                    "default": repr(param.param_value),
+                }
+            )
+    return parameters
+
+
 def _module_name(root_name: str, reference_name: str) -> str:
     """Module a referenced notebook is generated into.
 
@@ -243,9 +263,16 @@ class Compiler:
                 for var in sorted(node.ins)
             ]
             is_subpipeline = isinstance(node, SubPipeline)
-            if not is_subpipeline:
-                # a referenced notebook declares its own parameters; these are
-                # this notebook's, so they go to its own steps
+            if is_subpipeline:
+                # a referenced notebook takes this notebook's parameters under
+                # the names its own pipeline function declares
+                declared = {p["name"] for p in _parameters_of(node.pipeline)}
+                inputs.extend(
+                    {"arg": p["name"], "ref": p["name"]}
+                    for p in parameters
+                    if p["name"] in declared
+                )
+            else:
                 inputs.extend({"arg": p["arg"], "ref": p["name"]} for p in parameters)
             calls.append(
                 {
@@ -336,23 +363,8 @@ class Compiler:
         )
 
     def _parameter_context(self):
-        """The pipeline's parameters, as they appear in the generated code.
-
-        ``name`` is the variable a pipeline function declares, ``arg`` the
-        keyword a component receives it under.
-        """
-        parameters = []
-        for param_name, param in getattr(self.pipeline, "pipeline_parameters", {}).items():
-            if isinstance(param, PipelineParam):
-                parameters.append(
-                    {
-                        "name": param_name.lower(),
-                        "arg": _clean_param_name(param_name),
-                        "type": param.param_type or "str",
-                        "default": repr(param.param_value),
-                    }
-                )
-        return parameters
+        """This pipeline's parameters, as they appear in the generated code."""
+        return _parameters_of(self.pipeline)
 
     def _subpipeline_context(self, node):
         """Template context for one referenced notebook's module.
