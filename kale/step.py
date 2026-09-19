@@ -102,11 +102,11 @@ class Step:
         """
         # Check if artifact already exists, update if it's an output
         # TODO: This could be improved to handle more complex cases
-        for existing_art in self.artifacts:
+        for i, existing_art in enumerate(self.artifacts):
             if existing_art.name == artifact_name:
                 # If it's an output, ensure its type is set
                 if not is_input and existing_art.type is None:
-                    existing_art.type = artifact_type
+                    self.artifacts[i] = existing_art._replace(type=artifact_type)
                 return
 
         new_artifact = Artifact(name=artifact_name, type=artifact_type, is_input=is_input)
