@@ -89,6 +89,94 @@ export function useNotebookLoader({
     resetForNoNotebook,
   } = setters;
 
+  // Apply the notebook's saved Kale metadata to the panel. `availableExperiments`
+  // is whatever experiment list is currently known (empty when KFP has not
+  // loaded yet); it is only used to pick a sensible default experiment when the
+  // saved metadata doesn't fully specify one. This does not touch KFP, so it can
+  // (and must) run before any KFP call.
+  const applySavedMetadata = useCallback(
+    (
+      notebook: NotebookPanel,
+      notebookMetadata: Record<string, any> | null,
+      availableExperiments: IExperiment[],
+    ) => {
+      const defaultPipelineName = getNotebookFileName(notebook);
+      const sanitized = sanitizePipelineName(defaultPipelineName);
+
+      if (!notebookMetadata) {
+        setMetadata(prev => ({
+          ...DefaultState.metadata,
+          experiment: prev.experiment,
+          experiment_name: prev.experiment_name,
+          pipeline_name: sanitized,
+          base_image: DefaultState.metadata.base_image,
+        }));
+        return;
+      }
+
+      const currentMeta = metadataRef.current;
+      let experiment: IExperiment = currentMeta.experiment;
+      let experiment_name: string = currentMeta.experiment_name;
+
+      if (notebookMetadata['experiment']) {
+        experiment = {
+          id: notebookMetadata['experiment']['id'] || currentMeta.experiment.id,
+          name:
+            notebookMetadata['experiment']['name'] ||
+            currentMeta.experiment.name,
+        };
+        experiment_name = experiment.name;
+        if (
+          !experiment.id &&
+          !experiment.name &&
+          availableExperiments.length > 0
+        ) {
+          experiment = availableExperiments[0];
+          experiment_name = availableExperiments[0].name;
+        }
+      } else if (notebookMetadata['experiment_name']) {
+        const matching = availableExperiments.filter(
+          (e: IExperiment) => e.name === notebookMetadata['experiment_name'],
+        );
+        if (matching.length > 0) {
+          experiment = matching[0];
+        } else {
+          experiment = {
+            id: NEW_EXPERIMENT.id,
+            name: notebookMetadata['experiment_name'],
+          };
+        }
+        experiment_name = notebookMetadata['experiment_name'];
+      } else {
+        if (availableExperiments.length > 0) {
+          experiment = availableExperiments[0];
+          experiment_name = availableExperiments[0].name;
+        } else if (currentMeta.experiment.id || currentMeta.experiment.name) {
+          experiment = currentMeta.experiment;
+          experiment_name = currentMeta.experiment_name || '';
+        } else {
+          experiment = { id: '', name: '' };
+          experiment_name = '';
+        }
+      }
+
+      setMetadata({
+        ...notebookMetadata,
+        experiment,
+        experiment_name,
+        pipeline_name:
+          notebookMetadata['pipeline_name'] &&
+          notebookMetadata['pipeline_name'] !== ''
+            ? notebookMetadata['pipeline_name']
+            : sanitized,
+        pipeline_description: notebookMetadata['pipeline_description'] || '',
+        base_image: '',
+        steps_defaults: DefaultState.metadata.steps_defaults,
+      });
+    },
+    [setMetadata, metadataRef],
+  );
+
   const loadNotebookPanel = useCallback(
     async (notebook: NotebookPanel) => {
       if (tracker.size === 0) {
@@ -109,7 +197,13 @@ export function useNotebookLoader({
 
       const notebookMetadata = NotebookUtils.getMetaData(notebook, metadataKey);
 
-      let fetchedExperiments: IExperiment[] = [];
+      // Apply the notebook's saved metadata (pipeline name, description,
+      // experiment) to the panel FIRST, before any KFP call. This metadata is
+      // stored in the notebook file and is independent of KFP, so it must be
+      // shown immediately regardless of KFP state (loading, disconnected, or
+      // connected). Previously it was applied only after awaiting getExperiments,
+      // which left the fields blank while KFP was loading or unreachable (#965).
+      applySavedMetadata(notebook, notebookMetadata, experimentsRef.current);
 
       if (backend) {
         setNamespace(await commands.getNamespace());
@@ -120,19 +214,16 @@ export function useNotebookLoader({
         }
 
         setGettingExperiments(true);
-        // Fetching experiments requires KFP. When KFP is disconnected or still
-        // loading this rejects, but that must not abort the load: the notebook
-        // metadata below (pipeline name, description, experiment) is stored in
-        // the notebook file and is independent of KFP, so it must still be
-        // shown. Degrade to no experiments on failure and carry on.
+        // Fetching experiments requires KFP. If KFP is disconnected or still
+        // loading this rejects; the saved metadata is already shown, so we just
+        // skip enriching the experiment list. On success we refresh the
+        // experiment list and re-resolve the selected experiment against it.
         try {
           const currentMeta = metadataRef.current;
           const expResult = await commands.getExperiments(
             currentMeta.experiment,
             currentMeta.experiment_name,
           );
-          fetchedExperiments = expResult.experiments;
-
           setExperiments(expResult.experiments);
           setMetadata(prev => ({
             ...prev,
@@ -142,93 +233,13 @@ export function useNotebookLoader({
         } catch (error) {
           console.warn(
             'Kale: could not fetch experiments (KFP may be unreachable); ' +
-              'showing notebook metadata without the experiment list.',
+              'notebook metadata is shown without the experiment list.',
             error,
           );
           setExperiments([]);
         } finally {
           setGettingExperiments(false);
         }
-      }
-
-      if (notebookMetadata) {
-        const currentMeta = metadataRef.current;
-        const currentExperiments = experimentsRef.current;
-        let experiment: IExperiment = currentMeta.experiment;
-        let experiment_name: string = currentMeta.experiment_name;
-
-        if (notebookMetadata['experiment']) {
-          experiment = {
-            id:
-              notebookMetadata['experiment']['id'] || currentMeta.experiment.id,
-            name:
-              notebookMetadata['experiment']['name'] ||
-              currentMeta.experiment.name,
-          };
-          experiment_name = experiment.name;
-          const experimentsToUse =
-            fetchedExperiments.length > 0
-              ? fetchedExperiments
-              : currentExperiments;
-          if (
-            !experiment.id &&
-            !experiment.name &&
-            experimentsToUse.length > 0
-          ) {
-            experiment = experimentsToUse[0];
-            experiment_name = experimentsToUse[0].name;
-          }
-        } else if (notebookMetadata['experiment_name']) {
-          const matching = currentExperiments.filter(
-            (e: IExperiment) => e.name === notebookMetadata['experiment_name'],
-          );
-          if (matching.length > 0) {
-            experiment = matching[0];
-          } else {
-            experiment = {
-              id: NEW_EXPERIMENT.id,
-              name: notebookMetadata['experiment_name'],
-            };
-          }
-          experiment_name = notebookMetadata['experiment_name'];
-        } else {
-          if (currentExperiments.length > 0) {
-            experiment = currentExperiments[0];
-            experiment_name = currentExperiments[0].name;
-          } else if (currentMeta.experiment.id || currentMeta.experiment.name) {
-            experiment = currentMeta.experiment;
-            experiment_name = currentMeta.experiment_name || '';
-          } else {
-            experiment = { id: '', name: '' };
-            experiment_name = '';
-          }
-        }
-
-        const defaultPipelineName = getNotebookFileName(notebook);
-        const sanitized = sanitizePipelineName(defaultPipelineName);
-        setMetadata({
-          ...notebookMetadata,
-          experiment,
-          experiment_name,
-          pipeline_name:
-            notebookMetadata['pipeline_name'] &&
-            notebookMetadata['pipeline_name'] !== ''
-              ? notebookMetadata['pipeline_name']
-              : sanitized,
-          pipeline_description: notebookMetadata['pipeline_description'] || '',
-          base_image: '',
-          steps_defaults: DefaultState.metadata.steps_defaults,
-        });
-      } else {
-        const defaultPipelineName = getNotebookFileName(notebook);
-        const sanitized = sanitizePipelineName(defaultPipelineName);
-        setMetadata(prev => ({
-          ...DefaultState.metadata,
-          experiment: prev.experiment,
-          experiment_name: prev.experiment_name,
-          pipeline_name: sanitized,
-          base_image: DefaultState.metadata.base_image,
-        }));
       }
     },
     [
@@ -244,6 +255,7 @@ export function useNotebookLoader({
       setExperiments,
       setMetadata,
       experimentsRef,
+      applySavedMetadata,
     ],
   );
 
