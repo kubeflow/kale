@@ -60,6 +60,7 @@ interface IProps {
   enableKaleByDefault: boolean;
   autoSaveOnCompileOrRun: boolean;
   enableComposableNotebooks: boolean;
+  enableVolumes: boolean;
   defaultBaseImageSetting: string;
   runtimeImages: string[];
   envDefaultBaseImage: string;
@@ -77,6 +78,7 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     enableKaleByDefault,
     autoSaveOnCompileOrRun,
     enableComposableNotebooks,
+    enableVolumes,
     defaultBaseImageSetting,
     runtimeImages,
     envDefaultBaseImage,
@@ -303,29 +305,31 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
             </div>
           </div>
 
-          <div
-            className={
-              'kale-component ' +
-              (notebookMeta.isEnabled && activeNotebook ? '' : 'hidden')
-            }
-          >
-            <div>
-              <p
-                className="kale-header"
-                style={{ color: theme.kale.headers.main }}
-              >
-                Volumes
-              </p>
+          {enableVolumes && (
+            <div
+              className={
+                'kale-component ' +
+                (notebookMeta.isEnabled && activeNotebook ? '' : 'hidden')
+              }
+            >
+              <div>
+                <p
+                  className="kale-header"
+                  style={{ color: theme.kale.headers.main }}
+                >
+                  Volumes
+                </p>
+              </div>
+              <div className={'input-container'}>
+                <VolumesPanel
+                  volumes={notebookMeta.metadata.volumes ?? []}
+                  updateVolumes={notebookMeta.updateVolumes}
+                  notebook={activeNotebook}
+                  kernel={kernel}
+                />
+              </div>
             </div>
-            <div className={'input-container'}>
-              <VolumesPanel
-                volumes={notebookMeta.metadata.volumes ?? []}
-                updateVolumes={notebookMeta.updateVolumes}
-                notebook={activeNotebook}
-                kernel={kernel}
-              />
-            </div>
-          </div>
+          )}
 
           <div
             className={notebookMeta.isEnabled && activeNotebook ? '' : 'hidden'}

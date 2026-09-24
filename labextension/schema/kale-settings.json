@@ -22,6 +22,12 @@
       "description": "Show the 'Notebook' cell type, which references another notebook so it compiles as a nested sub-pipeline. Multi-notebook composition is still in development. Compiling a notebook that already contains a 'notebook:' cell works whether or not this is enabled.",
       "default": false
     },
+    "enableVolumes": {
+      "type": "boolean",
+      "title": "Enable volumes / PVC panel",
+      "description": "Show the Volumes section in the Kale sidebar, allowing PVCs to be mounted into pipeline steps. Disable to hide the PVC panel.",
+      "default": false
+    },
     "defaultBaseImage": {
       "type": "string",
       "title": "Default base image",
