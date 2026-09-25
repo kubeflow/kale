@@ -46,13 +46,15 @@
 
     {%- if step.config.labels %}
     {%- for label_key, label_value in step.config.labels.items() %}
-    add_pod_label(task={{ task_var }}, label_key="{{ label_key }}", label_value="{{ label_value }}")
+    add_pod_label(task={{ task_var }}, label_key="{{ label_key }}", label_value={{ label_value | tojson }})
     {%- endfor %}
     {%- endif %}
 
     {%- if step.config.annotations %}
     {%- for ann_key, ann_value in step.config.annotations.items() %}
-    add_pod_annotation(task={{ task_var }}, annotation_key="{{ ann_key }}", annotation_value="{{ ann_value }}")
+    {#- Keys are restricted by K8S_ANNOTATION_KEY, but values can be any string
+       (quotes included), so let tojson escape them into a valid literal. #}
+    add_pod_annotation(task={{ task_var }}, annotation_key="{{ ann_key }}", annotation_value={{ ann_value | tojson }})
     {%- endfor %}
     {%- endif %}
 
