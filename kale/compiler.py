@@ -102,7 +102,7 @@ def _parameters_of(pipeline) -> list[dict]:
         if isinstance(param, PipelineParam):
             parameters.append(
                 {
-                    "name": param_name,
+                    "name": param_name.lower(),
                     "arg": _clean_param_name(param_name),
                     "type": param.param_type or "str",
                     "default": repr(param.param_value),
@@ -165,22 +165,27 @@ class Compiler:
         return self._save_compiled_code()
 
     def _check_unique_param_names(self):
-        """Fail compile if two pipeline parameters derive the same argument name.
+        """Fail compile if two pipeline parameters derive the same name.
 
-        ``_clean_param_name`` maps an all-uppercase name to ``<lower>_param``,
-        so distinct parameters (e.g. ``A`` / ``a_param``) can produce the same
-        component argument. Detect that before emitting DSL so the generated
-        script does not fail with a duplicate argument ``SyntaxError``.
+        The pipeline function declares every parameter lowercased, and
+        ``_clean_param_name`` maps an all-uppercase name to ``<lower>_param``
+        for the components, so distinct parameters (e.g. ``a`` / ``A`` or
+        ``A`` / ``a_param``) can produce the same argument. Detect that before
+        emitting DSL so the generated script does not fail with a duplicate
+        argument ``SyntaxError``.
         """
-        seen = {}
+        derive = (str.lower, _clean_param_name)
+        seen = [{} for _ in derive]
         for param_name in getattr(self.pipeline, "pipeline_parameters", None) or {}:
-            arg = _clean_param_name(param_name)
-            if arg in seen:
-                raise ValueError(
-                    f"Pipeline parameters '{seen[arg]}' and '{param_name}' both "
-                    f"derive the argument name '{arg}'. Rename one of them."
-                )
-            seen[arg] = param_name
+            for fn, names in zip(derive, seen, strict=True):
+                name = fn(param_name)
+                if name in names:
+                    raise ValueError(
+                        f"Pipeline parameters '{names[name]}' and '{param_name}' "
+                        f"both become '{name}' in the generated pipeline. "
+                        "Rename one of them."
+                    )
+                names[name] = param_name
 
     def _check_unique_volume_env_vars(self):
         """Fail compile if exposed volume env var names collide.
