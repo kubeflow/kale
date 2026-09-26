@@ -153,6 +153,9 @@ def test_parse_assignments_expressions_exc(code):
         ("   ", {}),
         ("print(a)", {"a": "a"}),
         ("print(a)\nprint(var)\nprint(test_var)", {"a": "a", "var": "var", "test-var": "test_var"}),
+        ("# final metrics\nprint(accuracy)", {"accuracy": "accuracy"}),
+        ("print(accuracy)  # test set", {"accuracy": "accuracy"}),
+        ("# only a comment", {}),
     ],
 )
 def test_parse_metrics_print_statements(code, target):
