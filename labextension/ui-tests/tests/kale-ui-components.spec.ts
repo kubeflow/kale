@@ -102,6 +102,14 @@ async function fillAndSubmitVolume(
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
 }
 
+// Without a KFP cluster, Kale's KFP calls pop up an error dialog at an
+// unpredictable moment after a notebook opens. Handle it (and the unsaved
+// changes prompt) in every test so it can never block a click.
+test.beforeEach(async ({ page }) => {
+  await dismissKaleErrorDialogs(page);
+  await acceptUnsavedChangesPrompt(page);
+});
+
 test.describe('Kale Empty State', () => {
   test('should open the Kale panel and verify the empty-state components', async ({
     page,
@@ -221,8 +229,6 @@ test.describe('Trigger a Pipeline Compilation', () => {
   test(' should choose an option, deploy the action, and update the button', async ({
     page,
   }) => {
-    await dismissKaleErrorDialogs(page);
-    await acceptUnsavedChangesPrompt(page);
     await openKaleEnabledNotebook(page);
 
     // Wait for pipeline metadata to load so the deploy button is enabled
