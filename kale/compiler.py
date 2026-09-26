@@ -102,7 +102,7 @@ def _parameters_of(pipeline) -> list[dict]:
         if isinstance(param, PipelineParam):
             parameters.append(
                 {
-                    "name": param_name.lower(),
+                    "name": param_name,
                     "arg": _clean_param_name(param_name),
                     "type": param.param_type or "str",
                     "default": repr(param.param_value),
@@ -158,10 +158,29 @@ class Compiler:
         Returns path to DSL script.
         """
         log.info("Compiling Pipeline into KFP DSL code")
+        self._check_unique_param_names()
         self._check_unique_volume_env_vars()
         self._warn_rwo_volumes()
         self.dsl_source = self.generate_dsl()
         return self._save_compiled_code()
+
+    def _check_unique_param_names(self):
+        """Fail compile if two pipeline parameters derive the same argument name.
+
+        ``_clean_param_name`` maps an all-uppercase name to ``<lower>_param``,
+        so distinct parameters (e.g. ``A`` / ``a_param``) can produce the same
+        component argument. Detect that before emitting DSL so the generated
+        script does not fail with a duplicate argument ``SyntaxError``.
+        """
+        seen = {}
+        for param_name in getattr(self.pipeline, "pipeline_parameters", None) or {}:
+            arg = _clean_param_name(param_name)
+            if arg in seen:
+                raise ValueError(
+                    f"Pipeline parameters '{seen[arg]}' and '{param_name}' both "
+                    f"derive the argument name '{arg}'. Rename one of them."
+                )
+            seen[arg] = param_name
 
     def _check_unique_volume_env_vars(self):
         """Fail compile if exposed volume env var names collide.

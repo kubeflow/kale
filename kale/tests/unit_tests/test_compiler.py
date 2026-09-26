@@ -16,7 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from kale.compiler import Compiler, to_kale_env_var_name
+from kale.compiler import Compiler, _parameters_of, to_kale_env_var_name
+from kale.step import PipelineParam
 
 
 def _get_env_var_name_filter():
@@ -84,3 +85,38 @@ def test_check_unique_volume_env_vars_ignores_unexposed_volumes():
         ]
     )
     compiler._check_unique_volume_env_vars()
+
+
+def _pipeline_with_params(names):
+    """Build a pipeline stub whose pipeline_parameters are the given names."""
+    return SimpleNamespace(
+        pipeline_parameters={n: PipelineParam("int", i) for i, n in enumerate(names)}
+    )
+
+
+def test_pipeline_signature_keeps_parameter_case():
+    """Parameters differing only in case stay distinct in the pipeline signature."""
+    parameters = _parameters_of(_pipeline_with_params(["a", "A"]))
+    signature = Compiler._signature(parameters)
+
+    assert signature == "a: int = 0, A: int = 1"
+    compile(f"def pipeline({signature}): pass", "<signature>", "exec")
+
+
+def _compiler_with_params(names):
+    """Build a bare Compiler whose pipeline has the given parameter names."""
+    compiler = Compiler.__new__(Compiler)
+    compiler.pipeline = _pipeline_with_params(names)
+    return compiler
+
+
+def test_check_unique_param_names_allows_case_variants():
+    """Parameters differing only in case derive distinct argument names."""
+    _compiler_with_params(["a", "A"])._check_unique_param_names()
+
+
+def test_check_unique_param_names_raises_on_collision():
+    """Parameters deriving the same argument name raise ValueError at compile time."""
+    compiler = _compiler_with_params(["A", "a_param"])
+    with pytest.raises(ValueError, match=r"'A' and 'a_param'.*'a_param'"):
+        compiler._check_unique_param_names()
