@@ -100,6 +100,24 @@ def test_parse_metadata_secret_tag(notebook_processor):
     }
 
 
+def test_parse_metadata_annotation_value_with_colons(notebook_processor):
+    """Colons inside an annotation value are kept."""
+    tags = notebook_processor.parse_cell_metadata(
+        {
+            "tags": [
+                "step:test",
+                "annotation:owner.io/docs:https://example.com/runbook",
+                "annotation:schedule:10:30",
+            ]
+        }
+    )
+
+    assert tags["annotations"] == {
+        "owner.io/docs": "https://example.com/runbook",
+        "schedule": "10:30",
+    }
+
+
 def test_parse_metadata_dotted_secret_name(notebook_processor):
     """Test that a Secret name with dots (a valid DNS subdomain) is accepted."""
     tags = notebook_processor.parse_cell_metadata(
