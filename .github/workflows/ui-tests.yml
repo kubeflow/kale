@@ -1,0 +1,60 @@
+name: UI Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["*"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Non-blocking while the suite proves it is stable in CI; drop this once
+    # it has run green consistently so UI regressions fail the PR.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up development environment
+        run: make dev
+
+      - name: Install UI test dependencies
+        working-directory: labextension/ui-tests
+        run: |
+          uv run jlpm install --immutable
+          uv run jlpm playwright install --with-deps chromium
+
+      - name: Run UI tests
+        working-directory: labextension/ui-tests
+        run: uv run jlpm playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            labextension/ui-tests/playwright-report
+            labextension/ui-tests/test-results
+          retention-days: 7
