@@ -114,7 +114,7 @@ def _parameters_of(pipeline) -> list[dict]:
 def _module_name(root_name: str, reference_name: str) -> str:
     """Module a referenced notebook is generated into.
 
-    The root's name is part of it because two notebooks in one directory can
+    The root is part of the name because two notebooks in one directory can
     reference different notebooks under the same name, and their modules are
     written side by side.
     """
@@ -470,8 +470,19 @@ class Compiler:
         return f"{node.name}_task"
 
     def _module_name(self, node):
-        """Module the referenced notebook of ``node`` is generated into."""
-        return _module_name(self.pipeline.config.pipeline_name, node.name)
+        """Module the referenced notebook of ``node`` is generated into.
+
+        Keyed on the root notebook's path rather than on its pipeline name,
+        which several notebooks may share.
+        """
+        return _module_name(self._root_name(), node.name)
+
+    def _root_name(self) -> str:
+        """Name identifying the notebook being compiled, for generated files."""
+        notebook = getattr(self.pipeline.config, "notebook_path", "")
+        if notebook:
+            return utils.notebook_k8s_name(notebook)
+        return self.pipeline.config.pipeline_name
 
     def _boundary_ref(self, node, var):
         """Reference to the task output that satisfies ``var`` for ``node``."""
