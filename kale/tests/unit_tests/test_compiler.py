@@ -117,8 +117,9 @@ def test_check_unique_param_names_raises_on_collision(names, expected):
         _compiler_with_params(names)._check_unique_param_names()
 
 
-def test_annotation_and_label_values_are_escaped_in_dsl(tmp_path, monkeypatch):
-    """Values that contain ':' or '"' must survive into a DSL that still parses."""
+def _compile_pod_metadata(tmp_path, monkeypatch, tags):
+    """Compile a one-step notebook with `tags`; return {key: value} of the
+    add_pod_annotation/add_pod_label calls in the generated DSL."""
     nb = nbformat.v4.new_notebook()
     nb.metadata["kubeflow_notebook"] = {
         "pipeline_name": "annotations",
@@ -126,12 +127,7 @@ def test_annotation_and_label_values_are_escaped_in_dsl(tmp_path, monkeypatch):
         "volumes": [],
     }
     cell = nbformat.v4.new_code_cell(source="x = 1")
-    cell.metadata["tags"] = [
-        "step:train",
-        "annotation:example.com/dashboard:http://grafana.local:3000/d/abc",
-        'annotation:example.com/config:{"lr": 0.01}',
-        "label:team:ml",
-    ]
+    cell.metadata["tags"] = ["step:train", *tags]
     nb.cells.append(cell)
     nb_path = tmp_path / "annotations.ipynb"
     nbformat.write(nb, str(nb_path))
@@ -142,7 +138,7 @@ def test_annotation_and_label_values_are_escaped_in_dsl(tmp_path, monkeypatch):
     )
     pipeline = processor.run()
     dsl_path = Compiler(pipeline, processor.get_imports_and_functions()).compile()
-    dsl = open(dsl_path).read()
+    dsl = open(dsl_path, encoding="utf-8").read()
 
     calls = {}
     for node in ast.walk(ast.parse(dsl)):
@@ -154,9 +150,40 @@ def test_annotation_and_label_values_are_escaped_in_dsl(tmp_path, monkeypatch):
             calls[kw.get("annotation_key", kw.get("label_key"))] = kw.get(
                 "annotation_value", kw.get("label_value")
             )
+    return calls
+
+
+def test_annotation_and_label_values_are_escaped_in_dsl(tmp_path, monkeypatch):
+    """Values that contain ':' or '"' must survive into a DSL that still parses."""
+    calls = _compile_pod_metadata(
+        tmp_path,
+        monkeypatch,
+        [
+            "annotation:example.com/dashboard:http://grafana.local:3000/d/abc",
+            'annotation:example.com/config:{"lr": 0.01}',
+            "label:team:ml",
+        ],
+    )
 
     assert calls == {
         "example.com/dashboard": "http://grafana.local:3000/d/abc",
         "example.com/config": '{"lr": 0.01}',
         "team": "ml",
+    }
+
+
+def test_annotation_values_with_non_ascii_survive_in_dsl(tmp_path, monkeypatch):
+    """Emoji (non-BMP) and mixed quotes must round-trip as valid Python literals."""
+    calls = _compile_pod_metadata(
+        tmp_path,
+        monkeypatch,
+        [
+            "annotation:example.com/owner:ML team \U0001f600 caf\u00e9",
+            'annotation:example.com/note:it\'s "fine"',
+        ],
+    )
+
+    assert calls == {
+        "example.com/owner": "ML team \U0001f600 caf\u00e9",
+        "example.com/note": 'it\'s "fine"',
     }
