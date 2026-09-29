@@ -14,9 +14,6 @@ jobs:
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Non-blocking while the suite proves it is stable in CI; drop this once
-    # it has run green consistently so UI regressions fail the PR.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
