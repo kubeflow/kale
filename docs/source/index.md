@@ -115,6 +115,7 @@ getting-started/quickstart
 concepts/index
 concepts/cell-types
 concepts/data-passing
+concepts/composition
 concepts/compilation
 ```
 
