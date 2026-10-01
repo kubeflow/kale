@@ -121,6 +121,9 @@ def test_get_function_and_class_names(code, target):
         ("a = 3", {"a": (int.__name__, 3)}),
         ("a = 2.", {"a": (float.__name__, 2.0)}),
         ("a = True", {"a": (bool.__name__, True)}),
+        ("a = -1", {"a": (int.__name__, -1)}),
+        ("a = -0.5", {"a": (float.__name__, -0.5)}),
+        ("a = +3", {"a": (int.__name__, 3)}),
     ],
 )
 def test_parse_assignments_expressions(code, target):
@@ -138,6 +141,7 @@ def test_parse_assignments_expressions(code, target):
         "a = b = 3",
         "a = [2]",
         "a = b",
+        "a = -b",
     ],
 )
 def test_parse_assignments_expressions_exc(code):

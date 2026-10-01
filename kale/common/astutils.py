@@ -256,23 +256,23 @@ def parse_assignments_expressions(code):
         ):
             raise ValueError("Must provide single variable assignments in variables block")
         target = targets[0].id
-        value = block.value
         # now get the type of the variable
-
-        if isinstance(value, ast.Constant):
-            value = value.value
-            if isinstance(value, bool):
-                var_type = "bool"
-            elif value is None:
-                raise ValueError("`None` value None is not supported in pipeline parameters")
-            elif isinstance(value, (int, float)):
-                var_type = type(value).__name__
-            elif isinstance(value, str):
-                var_type = "str"
-            else:
-                raise ValueError(
-                    "Variables block must be comprised of primitive variables (int, float, str, bool)"
-                )
+        # `literal_eval` (unlike matching `ast.Constant`) also accepts signed
+        # numbers such as `-1`, which parse as a unary operation on a constant.
+        try:
+            value = ast.literal_eval(block.value)
+        except ValueError:
+            raise ValueError(
+                "Variables block must be comprised of primitive variables (int, float, str, bool)"
+            )
+        if isinstance(value, bool):
+            var_type = "bool"
+        elif value is None:
+            raise ValueError("`None` value None is not supported in pipeline parameters")
+        elif isinstance(value, (int, float)):
+            var_type = type(value).__name__
+        elif isinstance(value, str):
+            var_type = "str"
         else:
             raise ValueError(
                 "Variables block must be comprised of primitive variables (int, float, str, bool)"
