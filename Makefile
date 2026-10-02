@@ -2,7 +2,7 @@
         test test-backend test-backend-unit test-labextension test-e2e test-e2e-install \
         lint lint-backend lint-labextension format-labextension format-backend \
         build \
-        kfp-build kfp-serve kfp-compile kfp-run \
+        kfp-build kfp-serve kfp-compile kfp-run kfp-dev \
         kfp-dev-setup kfp-dev-start kfp-dev-stop kfp-dev-delete kfp-dev-status kfp-dev-upgrade \
         clean clean-venv lock lock-upgrade check-uv check-yarn-version \
         jupyter jupyter-kfp watch-labextension \
@@ -143,12 +143,12 @@ kfp-build: ## Build wheel for KFP cluster testing (fixed version for reproducibi
 	rm -f dist/kubeflow_kale-*.whl
 	$(UV) build
 	@# Create PEP 503 compliant simple index structure
-	rm -rf $(KFP_WHEEL_DIR)
-	mkdir -p $(KFP_WHEEL_DIR)/kubeflow-kale
-	cp dist/kubeflow_kale-*.whl $(KFP_WHEEL_DIR)/kubeflow-kale/
+	rm -rf "$(KFP_WHEEL_DIR)"
+	mkdir -p "$(KFP_WHEEL_DIR)/kubeflow-kale"
+	cp dist/kubeflow_kale-*.whl "$(KFP_WHEEL_DIR)/kubeflow-kale/"
 	@# Generate index files for pip simple API
-	@echo '<!DOCTYPE html><html><body><a href="kubeflow-kale/">kubeflow-kale</a></body></html>' > $(KFP_WHEEL_DIR)/index.html
-	@cd $(KFP_WHEEL_DIR)/kubeflow-kale && for f in *.whl; do echo "<a href=\"$$f\">$$f</a><br>"; done > index.html
+	@echo '<!DOCTYPE html><html><body><a href="kubeflow-kale/">kubeflow-kale</a></body></html>' > "$(KFP_WHEEL_DIR)/index.html"
+	@cd "$(KFP_WHEEL_DIR)/kubeflow-kale" && for f in *.whl; do echo "<a href=\"$$f\">$$f</a><br>"; done > index.html
 	@printf "$(GREEN)Wheel ready at $(KFP_WHEEL_DIR)\n$(NC)"
 
 kfp-serve: kfp-build ## Serve wheel via HTTP for Kind/Docker clusters
@@ -165,10 +165,37 @@ kfp-compile: ## Compile notebook with local wheel (usage: make kfp-compile NB=pa
 kfp-run: ## Compile and run on KFP with local wheel (usage: make kfp-run NB=... KFP_HOST=...)
 	@test -n "$(NB)" || { printf "$(YELLOW)Usage: make kfp-run NB=path/to/notebook.ipynb KFP_HOST=http://localhost:8080\n$(NC)"; exit 1; }
 	@test -n "$(KFP_HOST)" || { printf "$(YELLOW)Error: KFP_HOST not set\n$(NC)"; exit 1; }
-	@printf "$(YELLOW)Make sure 'make kfp-serve' is running in another terminal\n$(NC)"
+	@printf "$(GREEN)Using KFP at $(KFP_HOST)\n$(NC)"
 	KALE_PIP_INDEX_URLS="http://$(KFP_HOST_ADDR):$(KFP_PORT)" \
 	KALE_PIP_TRUSTED_HOSTS="$(KFP_HOST_ADDR)" \
 	$(UV) run kale --nb $(NB) --kfp_host $(KFP_HOST) --run_pipeline
+
+kfp-dev: ## Start KFP, build wheel, start wheel server, and run a notebook
+	@test -n "$(NB)" || { echo "Usage: make kfp-dev NB=path/to/notebook.ipynb"; exit 1; }
+
+	@echo "Ensuring KFP development environment is running..."
+	@$(MAKE) kfp-dev-setup \
+		KFP_CLUSTER_NAME="$(KFP_CLUSTER_NAME)" \
+		KFP_PIPELINE_VERSION="$(KFP_PIPELINE_VERSION)" \
+		KFP_LOCAL_PORT="$(KFP_LOCAL_PORT)" \
+		KFP_PID_FILE="$(KFP_PID_FILE)"
+
+	@$(MAKE) kfp-build
+
+	@echo "Checking wheel server on port $(KFP_PORT)..."
+	@if ! curl -sf "http://localhost:$(KFP_PORT)/kubeflow-kale/" >/dev/null; then \
+		echo "Starting wheel server on port $(KFP_PORT)..."; \
+		(cd "$(KFP_WHEEL_DIR)" && nohup python3 -m http.server "$(KFP_PORT)" \
+			>/tmp/kale-kfp-wheel-server.log 2>&1 & \
+			echo $$! > /tmp/kale-kfp-wheel-server.pid); \
+		sleep 2; \
+	else \
+		echo "Reusing existing wheel server on port $(KFP_PORT)"; \
+	fi
+
+	@$(MAKE) kfp-run \
+		NB="$(NB)" \
+		KFP_HOST="http://localhost:$(KFP_LOCAL_PORT)"
 
 ##@ KFP Local Cluster (k3d — lightweight alternative to minikube)
 
@@ -190,23 +217,23 @@ kfp-dev-start: ## Start existing cluster and port-forward KFP UI to localhost:80
 	}
 	@printf "$(BLUE)Switching kubectl context to k3d-$(KFP_CLUSTER_NAME)...\n$(NC)"
 	@kubectl config use-context k3d-$(KFP_CLUSTER_NAME)
-	@if [ -f $(KFP_PID_FILE) ]; then \
-		kill $$(cat $(KFP_PID_FILE)) 2>/dev/null || true; \
-		rm -f $(KFP_PID_FILE); \
+	@if [ -f "$(KFP_PID_FILE)" ]; then \
+		kill $$(cat "$(KFP_PID_FILE)") 2>/dev/null || true; \
+		rm -f "$(KFP_PID_FILE)"; \
 	fi
 	@printf "$(BLUE)Waiting for KFP pods to be ready...\n$(NC)"
 	@kubectl wait pods -l "application-crd-id=kubeflow-pipelines" \
 		--for condition=Ready --timeout=180s -n kubeflow 2>/dev/null || \
 		printf "$(YELLOW)Some pods may still be starting — check with: make kfp-dev-status\n$(NC)"
-	@kubectl port-forward -n kubeflow svc/ml-pipeline-ui $(KFP_LOCAL_PORT):80 >/dev/null 2>&1 & echo $$! > $(KFP_PID_FILE)
+	@kubectl port-forward -n kubeflow svc/ml-pipeline-ui "$(KFP_LOCAL_PORT):80" >/dev/null 2>&1 & echo $$! > "$(KFP_PID_FILE)"
 	@sleep 2
 	@printf "$(GREEN)KFP UI:  http://localhost:$(KFP_LOCAL_PORT)\n$(NC)"
 	@printf "$(GREEN)Run:     make kfp-run NB=... KFP_HOST=http://localhost:$(KFP_LOCAL_PORT)\n$(NC)"
 
 kfp-dev-stop: ## Stop port-forward and pause cluster (preserves all data)
-	@if [ -f $(KFP_PID_FILE) ]; then \
-		kill $$(cat $(KFP_PID_FILE)) 2>/dev/null || true; \
-		rm -f $(KFP_PID_FILE); \
+	@if [ -f "$(KFP_PID_FILE)" ]; then \
+		kill $$(cat "$(KFP_PID_FILE)") 2>/dev/null || true; \
+		rm -f "$(KFP_PID_FILE)"; \
 		printf "$(GREEN)Port-forward stopped\n$(NC)"; \
 	fi
 	@k3d cluster stop $(KFP_CLUSTER_NAME) 2>/dev/null || true
@@ -214,9 +241,9 @@ kfp-dev-stop: ## Stop port-forward and pause cluster (preserves all data)
 
 kfp-dev-delete: ## Delete cluster and free all resources (irreversible)
 	@printf "$(YELLOW)Deleting cluster '$(KFP_CLUSTER_NAME)' and all KFP data...\n$(NC)"
-	@if [ -f $(KFP_PID_FILE) ]; then \
-		kill $$(cat $(KFP_PID_FILE)) 2>/dev/null || true; \
-		rm -f $(KFP_PID_FILE); \
+	@if [ -f "$(KFP_PID_FILE)" ]; then \
+		kill $$(cat "$(KFP_PID_FILE)") 2>/dev/null || true; \
+		rm -f "$(KFP_PID_FILE)"; \
 	fi
 	@k3d cluster delete $(KFP_CLUSTER_NAME) 2>/dev/null || true
 	@printf "$(GREEN)Cluster deleted. Run 'make kfp-dev-setup' to start fresh.\n$(NC)"
