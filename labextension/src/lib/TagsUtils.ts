@@ -260,16 +260,20 @@ export default class TagsUtils {
 
     // A notebook reference carries its target's path in the cell metadata
     // (`notebook_path`), which the backend resolves relative to this notebook.
-    if (
-      metadata.stepName.startsWith(NOTEBOOK_PREFIX) &&
-      metadata.notebookPath !== undefined
-    ) {
-      CellUtils.setCellMetaData(
-        notebookPanel,
-        index,
-        'notebook_path',
-        metadata.notebookPath,
-      );
+    if (metadata.stepName.startsWith(NOTEBOOK_PREFIX)) {
+      if (metadata.notebookPath !== undefined) {
+        CellUtils.setCellMetaData(
+          notebookPanel,
+          index,
+          'notebook_path',
+          metadata.notebookPath,
+        );
+      }
+    } else {
+      // The cell is no longer a reference, so the path it pointed at is stale.
+      // Drop it here, where the tag is rewritten, so the two cannot disagree
+      // about whether this cell still references a notebook.
+      CellUtils.deleteCellMetaData(notebookPanel, index, 'notebook_path');
     }
 
     return CellUtils.setCellMetaData(notebookPanel, index, 'tags', tags);
@@ -364,6 +368,11 @@ export default class TagsUtils {
     const filteredTags = currentTags.filter(
       tag => !KALE_TAG_PREFIXES.some(prefix => tag.startsWith(prefix)),
     );
+
+    // `notebook_path` is not a tag, so the filter above cannot reach it.
+    // Clearing a reference cell has to remove it too, or the cell reads as
+    // cleared while still carrying the path it referenced.
+    CellUtils.deleteCellMetaData(notebook, activeCellIndex, 'notebook_path');
 
     CellUtils.setCellMetaData(
       notebook,
