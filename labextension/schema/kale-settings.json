@@ -1,6 +1,7 @@
 {
   "title": "Kale",
   "description": "Kubeflow Kale extension settings.",
+  "jupyter.lab.transform": true,
   "jupyter.lab.setting-icon": "kale:logo",
   "jupyter.lab.setting-icon-label": "Kale",
   "properties": {
@@ -79,17 +80,16 @@
       "pattern": "^$|\\S"
     },
     "runtimeImages": {
-      "type": "array",
+      "type": "object",
       "title": "Runtime images",
-      "description": "Runtime container images available when configuring a pipeline step.",
-      "default": [
-        "python:3.12",
-        "pytorch/pytorch:2.0",
-        "tensorflow/tensorflow:latest"
-      ],
-      "items": {
-        "type": "string"
-      }
+      "description": "Names and container image references available when configuring a pipeline step.",
+      "default": {
+        "Python 3.12": "python:3.12",
+        "PyTorch 2.0": "pytorch/pytorch:2.0",
+        "TensorFlow latest": "tensorflow/tensorflow:latest"
+      },
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "type": "string", "minLength": 1 }
     }
   },
   "additionalProperties": false,

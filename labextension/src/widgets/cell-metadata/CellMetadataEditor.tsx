@@ -55,7 +55,7 @@ export interface ICellEditorData {
 
 export interface IProps extends ICellEditorData {
   resolvedDefaultBaseImage: string;
-  runtimeImages: string[];
+  runtimeImages: Record<string, string>;
 }
 
 export const CellMetadataEditor: React.FC<IProps> = props => {

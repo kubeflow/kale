@@ -367,7 +367,7 @@ a {
 .kale-inline-cell-metadata-container {
   display: flex;
   align-items: center;
-  height: 20px;
+  min-height: 20px;
   margin-top: 5px;
   margin-bottom: 5px;
 }
@@ -379,6 +379,8 @@ a {
   display: flex;
   flex: 1;
   align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .kale-inline-cell-dependency {
@@ -387,6 +389,59 @@ a {
   height: 10px;
   display: inline-block;
   margin-left: 4px;
+}
+
+.kale-inline-base-image {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: calc(100% - 10px);
+  margin: 0 0 0 10px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.kale-inline-base-image-label {
+  flex: none;
+}
+
+.kale-inline-base-image-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kale-inline-base-image-details.has-name {
+  grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr);
+}
+
+.kale-inline-base-image-name {
+  display: block;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kale-inline-base-image-separator {
+  color: var(--jp-ui-font-color2);
+  font-size: 1.5em;
+  line-height: 1;
+}
+
+.kale-inline-base-image-reference {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+  min-width: 0;
 }
 
 .jp-Notebook .jp-Cell.kale-merged-cell {

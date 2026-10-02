@@ -37,7 +37,7 @@ interface IProps {
   notebook: NotebookPanel;
   onMetadataEnable: (isEnabled: boolean) => void;
   resolvedDefaultBaseImage: string;
-  runtimeImages: string[];
+  runtimeImages: Record<string, string>;
   composableNotebooks: boolean;
   initialChecked?: boolean;
 }
@@ -61,6 +61,7 @@ export const InlineCellsMetadata: React.FC<IProps> = ({
     activeCellIndex,
     {
       resolvedDefaultBaseImage,
+      runtimeImages,
       onActiveMetadataChange: () => setIsEditorVisible(true),
       onCellsChanged: () => setIsEditorVisible(false),
     },

@@ -38,7 +38,7 @@ interface IStepConfigDialogProps {
   baseImage?: string;
   resolvedDefaultBaseImage: string;
   onUpdateBaseImage: (value: string) => void;
-  runtimeImages: string[];
+  runtimeImages: Record<string, string>;
   // GPU / limits
   limits: { [id: string]: string };
   updateLimits: (actions: ILimitAction[]) => void;
