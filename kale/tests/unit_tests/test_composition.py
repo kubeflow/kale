@@ -353,6 +353,62 @@ def test_referenced_notebook_keeps_its_pipeline_parameters(tmp_path, monkeypatch
     assert "factor=factor" in module
 
 
+def test_root_parameters_reach_a_referenced_notebooks_steps(tmp_path, monkeypatch):
+    """The root's parameters are the composition's parameters, so a step inside
+    a referenced notebook that uses one receives it rather than failing at
+    runtime with a NameError."""
+    _write_nb(
+        tmp_path / "child.ipynb",
+        "child",
+        [(["step:train"], "print(f'child training for {epochs} epochs')")],
+    )
+    root = tmp_path / "root.ipynb"
+    _write_nb(
+        root,
+        "root",
+        [(["pipeline-parameters"], "epochs = 7"), _ref("child", "./child.ipynb")],
+    )
+
+    monkeypatch.chdir(tmp_path)
+    _, dsl_path = _compile(root)
+
+    module = _module(tmp_path, "child")
+    # the component receives it and the parameters block binds it
+    assert "epochs: int = 7" in module
+    assert "epochs = {epochs}" in module
+    # and the nested pipeline declares it, so the root can pass it in
+    assert f"def {_module_name('root', 'child')}_pipeline(epochs: int = 7)" in module
+    assert "epochs=epochs" in open(dsl_path).read()
+
+
+def test_root_parameters_win_over_a_referenced_notebooks_own(tmp_path, monkeypatch):
+    """A composition exposes one value for a name, the root's, since that is the
+    one a run is submitted with. Parameters the root does not declare keep the
+    referenced notebook's own default."""
+    _write_nb(
+        tmp_path / "child.ipynb",
+        "child",
+        [
+            (["pipeline-parameters"], "epochs = 3\nlr = 0.5"),
+            (["step:train"], "print(f'{epochs} {lr}')"),
+        ],
+    )
+    root = tmp_path / "root.ipynb"
+    _write_nb(
+        root,
+        "root",
+        [(["pipeline-parameters"], "epochs = 7"), _ref("child", "./child.ipynb")],
+    )
+
+    monkeypatch.chdir(tmp_path)
+    _compile(root)
+
+    module = _module(tmp_path, "child")
+    assert (
+        f"def {_module_name('root', 'child')}_pipeline(epochs: int = 7, lr: float = 0.5)" in module
+    )
+
+
 def test_step_config_survives_composition(tmp_path, monkeypatch):
     """A step's `limit:`, `label:`, `annotation:` and `cache:` tags have the
     same effect whether the notebook is composed or compiled on its own."""

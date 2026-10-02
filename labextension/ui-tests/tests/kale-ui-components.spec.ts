@@ -55,6 +55,28 @@ async function openKaleEnabledNotebook(page: Page): Promise<void> {
   await expect(enableSwitch).toBeChecked();
 }
 
+/** Kale rewrites metadata on every change - accept unsaved changes. */
+async function acceptUnsavedChangesPrompt(page: Page): Promise<void> {
+  const prompt = page
+    .locator('.jp-Dialog')
+    .filter({ hasText: 'Unsaved Changes' });
+  await page.addLocatorHandler(prompt, async dialog => {
+    await dialog.getByRole('button', { name: 'YES' }).click();
+  });
+}
+
+/** Dismiss Kale's error dialog to unblock other actions. */
+async function dismissKaleErrorDialogs(page: Page): Promise<void> {
+  const errorDialog = page.locator('.jp-Dialog').filter({ hasText: 'Error' });
+  await page.addLocatorHandler(errorDialog, async dialog => {
+    await dialog.getByRole('button', { name: 'Close' }).click();
+  });
+}
+
+function getDeployButtonGroup(page: Page): Locator {
+  return page.locator('[aria-label="split button"]');
+}
+
 function getAddVolumeDialog(page: Page): Locator {
   return page.getByRole('dialog', { name: 'Add Volume' });
 }
@@ -187,6 +209,49 @@ test.describe('Open a Notebook and Enable Kale', () => {
     await expect(page.locator('label:has-text("Step name")')).toBeVisible();
     await expect(page.locator('label:has-text("Depends on")')).toBeVisible();
     await expect(page.locator('[aria-label="Configure step"]')).toBeVisible();
+  });
+});
+
+test.describe('Trigger a Pipeline Compilation', () => {
+  test(' should choose an option, deploy the action, and update the button', async ({
+    page,
+  }) => {
+    await dismissKaleErrorDialogs(page);
+    await acceptUnsavedChangesPrompt(page);
+    await openKaleEnabledNotebook(page);
+
+    // Wait for pipeline metadata to load so the deploy button is enabled
+    const experimentName = page.getByLabel('Experiment Name');
+    await expect(experimentName).toBeVisible({ timeout: 60000 });
+    await experimentName.fill('test-experiment');
+    await page.getByLabel('Pipeline Name').fill('test-pipeline');
+
+    // The deploy button defaults to "Compile and Run"
+    const deployButtonGroup = getDeployButtonGroup(page);
+    const mainDeployButton = deployButtonGroup.locator('button').first();
+    await expect(mainDeployButton).toBeEnabled({ timeout: 10000 });
+    await expect(mainDeployButton).toHaveText('Compile and Run');
+
+    // Open the three-dots menu
+    await deployButtonGroup.locator('button').last().click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible({ timeout: 5000 });
+
+    // Pick a new 'Compile' action
+    await menu.getByRole('menuitem', { name: 'Compile and Save' }).click();
+
+    // The deploy must start without a second click on the main button
+    const deployProgress = page.locator('.deploy-progress');
+    await expect(deployProgress).toBeVisible({ timeout: 10000 });
+    await expect(
+      deployProgress.locator('.deploy-progress-label', {
+        hasText: 'Validating notebook...',
+      }),
+    ).toBeVisible();
+
+    // The button must keep the newly chosen action as its new name
+    await expect(mainDeployButton).toBeEnabled({ timeout: 60000 });
+    await expect(mainDeployButton).toHaveText('Compile and Save');
   });
 });
 
