@@ -295,15 +295,16 @@ def parse_metrics_print_statements(code):
     """
     err_msg = (
         "Must provide just print statements of variables in the metrics"
-        " cell. A variable name must be 64 chars long, have lowercase"
-        " characters, digits or '-', and must start with a lowercase"
+        " cell. A variable name must be at most 64 chars long, have lowercase"
+        " characters, digits or '_', and must start with a lowercase"
         " character and end with a lowercase character or digit."
     )
-    code = code.strip()
-    # remove empty lines
+    # drop comments (a valid line is only `print(<name>)`, so it never holds
+    # a `#`) and surrounding whitespace, then the empty lines
+    lines = [line.split("#", 1)[0].strip() for line in code.splitlines()]
+    code = "\n".join(filter(None, lines))
     if code == "":
         return {}
-    code = "\n".join(list(filter(str.strip, code.splitlines())))
 
     # Note the parenthesis around the pattern, so that it becomes a group
     # The ?: will make the 2nd group not be captured when using re.find()
