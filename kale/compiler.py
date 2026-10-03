@@ -58,6 +58,21 @@ def to_kale_env_var_name(pvc_name: str) -> str:
     return "KALE_VOLUME_" + re.sub(r"[^A-Z0-9]", "_", pvc_name.upper())
 
 
+def pyrepr(value) -> str:
+    """Render a value as a Python literal for the generated DSL.
+
+    Unlike Jinja's ``tojson``, ``repr`` keeps non-BMP characters (e.g. emoji)
+    intact instead of emitting JSON surrogate pairs, which Python would decode
+    to lone surrogates. Strings are double-quoted when possible, to match the
+    rest of the template.
+    """
+    literal = repr(value)
+    if isinstance(value, str) and literal.startswith("'") and '"' not in value:
+        # Any \' escapes stay valid inside a double-quoted literal.
+        literal = f'"{literal[1:-1]}"'
+    return literal
+
+
 KFP_DSL_ARTIFACT_IMPORTS = [
     "Dataset",
     "Model",
@@ -676,6 +691,8 @@ class Compiler:
         template_env.filters["add_suffix"] = lambda s, suffix: s + suffix
         template_env.filters["add_prefix"] = lambda s, prefix: prefix + s
         template_env.filters["quote_if_not_none"] = lambda x: f'"{x}"' if x is not None else None
+        # Render a value as a valid Python literal (see pyrepr).
+        template_env.filters["pyrepr"] = pyrepr
         # Derive KALE_VOLUME_<NAME> env var name from a PVC name.
         template_env.filters["to_kale_env_var_name"] = to_kale_env_var_name
         self.templating_env = template_env
