@@ -94,8 +94,12 @@ def main():
     metadata_group.add_argument(
         "--pipeline_description", type=str, help="Description of the deployed pipeline"
     )
+    # The config field is `base_image`; keep the flag name users already know.
     metadata_group.add_argument(
-        "--docker_image", type=str, help="Docker base image used to build the pipeline steps"
+        "--docker_image",
+        dest="base_image",
+        type=str,
+        help="Docker base image used to build the pipeline steps",
     )
     metadata_group.add_argument(
         "--kfp_host", type=str, help="KFP endpoint. Provide address as <host>:<port>."
