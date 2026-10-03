@@ -165,6 +165,18 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     } else {
       experimentInputValue = selectedExperiments[0].name;
     }
+  } else if (
+    notebookMeta.metadata.experiment.name !== '' ||
+    notebookMeta.metadata.experiment_name !== ''
+  ) {
+    // No experiment list is available (e.g. KFP disconnected or still loading),
+    // but the notebook has a saved experiment. Show it from the notebook
+    // metadata so the field is populated regardless of KFP state (#965).
+    experimentInputSelected = NEW_EXPERIMENT.id;
+    experimentInputValue =
+      notebookMeta.metadata.experiment.name !== ''
+        ? notebookMeta.metadata.experiment.name
+        : notebookMeta.metadata.experiment_name;
   }
   const pipelineNameValid =
     /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(
