@@ -128,6 +128,7 @@ def get_marshal_candidates(code):
     #  Context manager (just the alias)
     contexts = (
         ast.FunctionDef,
+        ast.AsyncFunctionDef,
         ast.ClassDef,
     )
     tree = ast.parse(commented_code)
@@ -154,10 +155,10 @@ def get_marshal_candidates(code):
 def parse_functions(code):
     """Parse all the global functions present in the input code.
 
-    Parse all the ast nodes ast.FunctionDef that are global functions in the
-    source code. These also include function that are defined inside other
-    Python statements, like `try`. ast.ClassDef nodes are skipped from the
-    parsing so that class functions are ignored.
+    Parse all the ast.FunctionDef and ast.AsyncFunctionDef nodes that are
+    global functions in the source code. These also include functions that are
+    defined inside other Python statements, like `try`. ast.ClassDef nodes are
+    skipped from the parsing so that class functions are ignored.
 
     Args:
         code (str): Multiline string representing Python code
@@ -167,8 +168,12 @@ def parse_functions(code):
     fns = {}
     tree = ast.parse(code)
     for block in tree.body:
-        for node in walk(block, stop_at=(ast.FunctionDef,), ignore=(ast.ClassDef,)):
-            if isinstance(node, ast.FunctionDef):
+        for node in walk(
+            block,
+            stop_at=(ast.FunctionDef, ast.AsyncFunctionDef),
+            ignore=(ast.ClassDef,),
+        ):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 fn_name = node.name
                 fns[fn_name] = astor.to_source(node)
     return fns
@@ -227,7 +232,7 @@ def get_function_and_class_names(code):
         for node in walk(block):
             if isinstance(
                 node,
-                ast.FunctionDef | ast.ClassDef,
+                ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
             ):
                 names.add(node.name)
     return names
