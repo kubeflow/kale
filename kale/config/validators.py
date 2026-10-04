@@ -277,7 +277,7 @@ class OutputPathValidator(Validator):
 
         project_dir = Path.cwd().resolve()
         resolved = (project_dir / value).resolve()
-        if not str(resolved).startswith(str(project_dir)):
+        if not resolved.is_relative_to(project_dir):
             raise ValueError(
                 f"'{value}' is not a valid output directory. The path must be"
                 " relative to the project directory (e.g. 'pipelines/output')."
