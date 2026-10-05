@@ -19,12 +19,24 @@ opens the server to the world and provide access to JupyterLab
 JavaScript objects through the global window variable.
 """
 
+import json
+from pathlib import Path
+from tempfile import mkdtemp
+
 from jupyterlab.galata import configure_jupyter_server
 
 configure_jupyter_server(c)
 
 # Use port 8889 to avoid conflicts with running JupyterLab instances
 c.ServerApp.port = 8889
+
+# Isolate the tests from the developer's own JupyterLab settings, and enable
+# the Volumes panel (hidden by default) so the Volumes tests can reach it.
+settings_dir = Path(mkdtemp(prefix="kale-ui-tests-settings-"))
+kale_settings = settings_dir / "jupyterlab-kubeflow-kale" / "kale-settings.jupyterlab-settings"
+kale_settings.parent.mkdir(parents=True)
+kale_settings.write_text(json.dumps({"enableVolumes": True}))
+c.LabApp.user_settings_dir = str(settings_dir)
 
 # Uncomment to set server log level to debug level
 # c.ServerApp.log_level = "DEBUG"

@@ -59,6 +59,7 @@ interface IUseNotebookLoaderParams {
   backend: boolean;
   kernel: Kernel.IKernelConnection;
   enableKaleByDefault: boolean;
+  isEnabled: boolean;
   metadataKey: string;
   setters: ILoaderSetters;
 }
@@ -73,6 +74,7 @@ export function useNotebookLoader({
   backend,
   kernel,
   enableKaleByDefault,
+  isEnabled,
   metadataKey,
   setters,
 }: IUseNotebookLoaderParams) {
@@ -86,8 +88,45 @@ export function useNotebookLoader({
     setMetadata,
     experimentsRef,
     setIsEnabled,
+    isEnabledRef,
     resetForNoNotebook,
   } = setters;
+
+  const fetchExperiments = useCallback(
+    async (notebook: NotebookPanel): Promise<IExperiment[]> => {
+      const commands = new Commands(notebook, kernel);
+      await notebook.sessionContext.ready;
+
+      try {
+        setNamespace(await commands.getNamespace());
+      } catch (error) {
+        console.error('Failed to get namespace:', error);
+      }
+
+      setGettingExperiments(true);
+      const currentMeta = metadataRef.current;
+      const expResult = await commands.getExperiments(
+        currentMeta.experiment,
+        currentMeta.experiment_name,
+      );
+      setExperiments(expResult.experiments);
+      setGettingExperiments(false);
+      setMetadata(prev => ({
+        ...prev,
+        experiment: expResult.experiment,
+        experiment_name: expResult.experiment_name,
+      }));
+      return expResult.experiments;
+    },
+    [
+      kernel,
+      metadataRef,
+      setExperiments,
+      setGettingExperiments,
+      setMetadata,
+      setNamespace,
+    ],
+  );
 
   const loadNotebookPanel = useCallback(
     async (notebook: NotebookPanel) => {
@@ -111,29 +150,16 @@ export function useNotebookLoader({
 
       let fetchedExperiments: IExperiment[] = [];
 
-      if (backend) {
-        setNamespace(await commands.getNamespace());
-
+      // Only make KFP network calls when the Kale toggle is enabled.
+      // This avoids hitting a potentially-absent KFP endpoint on every notebook
+      // open for users who have never enabled Kale.
+      if (backend && isEnabledRef.current) {
         const nbFilePath = getNotebookPath(notebook);
         if (nbFilePath) {
           await commands.resumeStateIfExploreNotebook(nbFilePath);
         }
 
-        setGettingExperiments(true);
-        const currentMeta = metadataRef.current;
-        const expResult = await commands.getExperiments(
-          currentMeta.experiment,
-          currentMeta.experiment_name,
-        );
-        fetchedExperiments = expResult.experiments;
-
-        setExperiments(expResult.experiments);
-        setGettingExperiments(false);
-        setMetadata(prev => ({
-          ...prev,
-          experiment: expResult.experiment,
-          experiment_name: expResult.experiment_name,
-        }));
+        fetchedExperiments = await fetchExperiments(notebook);
       }
 
       if (notebookMetadata) {
@@ -164,7 +190,11 @@ export function useNotebookLoader({
             experiment_name = experimentsToUse[0].name;
           }
         } else if (notebookMetadata['experiment_name']) {
-          const matching = currentExperiments.filter(
+          const experimentsToUse =
+            fetchedExperiments.length > 0
+              ? fetchedExperiments
+              : currentExperiments;
+          const matching = experimentsToUse.filter(
             (e: IExperiment) => e.name === notebookMetadata['experiment_name'],
           );
           if (matching.length > 0) {
@@ -177,9 +207,13 @@ export function useNotebookLoader({
           }
           experiment_name = notebookMetadata['experiment_name'];
         } else {
-          if (currentExperiments.length > 0) {
-            experiment = currentExperiments[0];
-            experiment_name = currentExperiments[0].name;
+          const experimentsToUse =
+            fetchedExperiments.length > 0
+              ? fetchedExperiments
+              : currentExperiments;
+          if (experimentsToUse.length > 0) {
+            experiment = experimentsToUse[0];
+            experiment_name = experimentsToUse[0].name;
           } else if (currentMeta.experiment.id || currentMeta.experiment.name) {
             experiment = currentMeta.experiment;
             experiment_name = currentMeta.experiment_name || '';
@@ -223,14 +257,33 @@ export function useNotebookLoader({
       metadataKey,
       setKfpUiHost,
       setDeployPanelCustomLinks,
-      setNamespace,
-      setGettingExperiments,
       metadataRef,
-      setExperiments,
       setMetadata,
       experimentsRef,
+      fetchExperiments,
     ],
   );
+
+  // Enabling Kale on the notebook that is already open must load experiments
+  // immediately. Notebook switches still go through loadNotebookPanel.
+  useEffect(() => {
+    if (!backend || !isEnabled) {
+      return;
+    }
+    const notebook = tracker.currentWidget;
+    if (!(notebook instanceof NotebookPanel)) {
+      return;
+    }
+    let cancelled = false;
+    fetchExperiments(notebook).catch(error => {
+      if (!cancelled) {
+        console.error('Failed to load KFP experiments:', error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, isEnabled, tracker, fetchExperiments]);
 
   useEffect(() => {
     const handleNotebookChanged = async (
