@@ -16,7 +16,9 @@ import { test, expect, Locator, Page } from '@playwright/test';
 
 /** Opens JupyterLab and clicks the Kale sidebar tab. */
 async function openKaleTab(page: Page): Promise<void> {
-  await page.goto('http://localhost:8889/lab', { waitUntil: 'load' });
+  // `?reset` starts from an empty workspace, so notebooks left open by earlier
+  // tests are not restored (and do not pop up a "Select Kernel" dialog).
+  await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
 
   await page.waitForTimeout(3000);
 
@@ -95,16 +97,24 @@ async function fillAndSubmitVolume(
   { name, mountPoint }: { name: string; mountPoint: string },
 ): Promise<void> {
   await dialog.getByLabel('PVC name').fill(name);
-  await dialog.getByLabel('Mount path').fill(mountPoint);
+  await dialog.getByRole('textbox', { name: 'Mount path' }).fill(mountPoint);
   await dialog.getByRole('button', { name: 'Add volume', exact: true }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
 }
+
+// Without a KFP cluster, Kale's KFP calls pop up an error dialog at an
+// unpredictable moment after a notebook opens. Handle it (and the unsaved
+// changes prompt) in every test so it can never block a click.
+test.beforeEach(async ({ page }) => {
+  await dismissKaleErrorDialogs(page);
+  await acceptUnsavedChangesPrompt(page);
+});
 
 test.describe('Kale Empty State', () => {
   test('should open the Kale panel and verify the empty-state components', async ({
     page,
   }) => {
-    await page.goto('http://localhost:8889/lab', { waitUntil: 'load' });
+    await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
 
     await page.waitForTimeout(3000);
 
@@ -157,7 +167,7 @@ test.describe('Open a Notebook and Enable Kale', () => {
   test('should open a JupyterNotebook, enable Kale with the toggle, and verify UI components', async ({
     page,
   }) => {
-    await page.goto('http://localhost:8889/lab', { waitUntil: 'load' });
+    await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
 
     await page.waitForTimeout(3000);
 
@@ -208,7 +218,10 @@ test.describe('Open a Notebook and Enable Kale', () => {
     await expect(page.locator('label:has-text("Cell type")')).toBeVisible();
     await expect(page.locator('label:has-text("Step name")')).toBeVisible();
     await expect(page.locator('label:has-text("Depends on")')).toBeVisible();
-    await expect(page.locator('[aria-label="Configure step"]')).toBeVisible();
+    // The Tooltip wrapper carries the same aria-label, so match the button only
+    await expect(
+      page.getByRole('button', { name: 'Configure step' }),
+    ).toBeVisible();
   });
 });
 
@@ -216,8 +229,6 @@ test.describe('Trigger a Pipeline Compilation', () => {
   test(' should choose an option, deploy the action, and update the button', async ({
     page,
   }) => {
-    await dismissKaleErrorDialogs(page);
-    await acceptUnsavedChangesPrompt(page);
     await openKaleEnabledNotebook(page);
 
     // Wait for pipeline metadata to load so the deploy button is enabled
@@ -288,7 +299,7 @@ test.describe('Volumes panel — validation', () => {
 
     const dialog = await openAddVolumeDialog(page);
     await dialog.getByLabel('PVC name').fill('raw-data');
-    await dialog.getByLabel('Mount path').fill('/other');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/other');
 
     await expect(
       dialog.getByText('This volume name is already used by another volume'),
@@ -309,7 +320,7 @@ test.describe('Volumes panel — validation', () => {
 
     const dialog = await openAddVolumeDialog(page);
     await dialog.getByLabel('PVC name').fill('other-data');
-    await dialog.getByLabel('Mount path').fill('/data');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/data');
 
     await expect(
       dialog.getByText('Mount path already used by another volume'),
@@ -324,7 +335,9 @@ test.describe('Volumes panel — validation', () => {
 
     const dialog = await openAddVolumeDialog(page);
     await dialog.getByLabel('PVC name').fill('raw-data');
-    await dialog.getByLabel('Mount path').fill('relative/path');
+    await dialog
+      .getByRole('textbox', { name: 'Mount path' })
+      .fill('relative/path');
 
     await expect(
       dialog.getByText('Mount path must be an absolute path starting with "/"'),
@@ -341,7 +354,9 @@ test.describe('Volumes panel — validation', () => {
 
     const dialog = await openAddVolumeDialog(page);
     await dialog.getByLabel('PVC name').fill('raw-data');
-    await dialog.getByLabel('Mount path').fill('/data/../secret');
+    await dialog
+      .getByRole('textbox', { name: 'Mount path' })
+      .fill('/data/../secret');
 
     await expect(
       dialog.getByText('Mount path must not contain "." or ".." segments'),
@@ -356,7 +371,7 @@ test.describe('Volumes panel — validation', () => {
 
     const dialog = await openAddVolumeDialog(page);
     await dialog.getByLabel('PVC name').fill('raw-data');
-    await dialog.getByLabel('Mount path').fill('/my data');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/my data');
 
     await expect(
       dialog.getByText(
