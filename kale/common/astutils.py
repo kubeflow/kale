@@ -256,23 +256,23 @@ def parse_assignments_expressions(code):
         ):
             raise ValueError("Must provide single variable assignments in variables block")
         target = targets[0].id
-        value = block.value
         # now get the type of the variable
-
-        if isinstance(value, ast.Constant):
-            value = value.value
-            if isinstance(value, bool):
-                var_type = "bool"
-            elif value is None:
-                raise ValueError("`None` value None is not supported in pipeline parameters")
-            elif isinstance(value, (int, float)):
-                var_type = type(value).__name__
-            elif isinstance(value, str):
-                var_type = "str"
-            else:
-                raise ValueError(
-                    "Variables block must be comprised of primitive variables (int, float, str, bool)"
-                )
+        # `literal_eval` (unlike matching `ast.Constant`) also accepts signed
+        # numbers such as `-1`, which parse as a unary operation on a constant.
+        try:
+            value = ast.literal_eval(block.value)
+        except ValueError:
+            raise ValueError(
+                "Variables block must be comprised of primitive variables (int, float, str, bool)"
+            )
+        if isinstance(value, bool):
+            var_type = "bool"
+        elif value is None:
+            raise ValueError("`None` value None is not supported in pipeline parameters")
+        elif isinstance(value, (int, float)):
+            var_type = type(value).__name__
+        elif isinstance(value, str):
+            var_type = "str"
         else:
             raise ValueError(
                 "Variables block must be comprised of primitive variables (int, float, str, bool)"
@@ -295,15 +295,16 @@ def parse_metrics_print_statements(code):
     """
     err_msg = (
         "Must provide just print statements of variables in the metrics"
-        " cell. A variable name must be 64 chars long, have lowercase"
-        " characters, digits or '-', and must start with a lowercase"
+        " cell. A variable name must be at most 64 chars long, have lowercase"
+        " characters, digits or '_', and must start with a lowercase"
         " character and end with a lowercase character or digit."
     )
-    code = code.strip()
-    # remove empty lines
+    # drop comments (a valid line is only `print(<name>)`, so it never holds
+    # a `#`) and surrounding whitespace, then the empty lines
+    lines = [line.split("#", 1)[0].strip() for line in code.splitlines()]
+    code = "\n".join(filter(None, lines))
     if code == "":
         return {}
-    code = "\n".join(list(filter(str.strip, code.splitlines())))
 
     # Note the parenthesis around the pattern, so that it becomes a group
     # The ?: will make the 2nd group not be captured when using re.find()
