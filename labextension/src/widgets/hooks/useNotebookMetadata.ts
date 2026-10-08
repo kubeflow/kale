@@ -57,6 +57,7 @@ export interface ILoaderSetters {
   setExperiments: Dispatch<SetStateAction<IExperiment[]>>;
   setGettingExperiments: Dispatch<SetStateAction<boolean>>;
   setIsEnabled: Dispatch<SetStateAction<boolean>>;
+  isEnabledRef: MutableRefObject<boolean>;
   setNamespace: Dispatch<SetStateAction<string>>;
   setKfpUiHost: Dispatch<SetStateAction<string>>;
   setDeployPanelCustomLinks: Dispatch<SetStateAction<IDeployPanelCustomLinks>>;
@@ -101,6 +102,8 @@ export function useNotebookMetadata({
   metadataRef.current = metadata;
   const experimentsRef = useRef(experiments);
   experimentsRef.current = experiments;
+  const isEnabledRef = useRef(isEnabled);
+  isEnabledRef.current = isEnabled;
 
   // --- updaters (exposed to LeftPanel form inputs) ---
 
@@ -145,12 +148,14 @@ export function useNotebookMetadata({
     backend,
     kernel,
     enableKaleByDefault,
+    isEnabled,
     metadataKey: KALE_NOTEBOOK_METADATA_KEY,
     setters: {
       setMetadata,
       setExperiments,
       setGettingExperiments,
       setIsEnabled,
+      isEnabledRef,
       setNamespace,
       setKfpUiHost,
       setDeployPanelCustomLinks,
