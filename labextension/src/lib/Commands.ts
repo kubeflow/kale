@@ -17,6 +17,7 @@ import { NotebookPanel } from '@jupyterlab/notebook';
 import {
   _legacy_executeRpc,
   _legacy_executeRpcAndShowRPCError,
+  BaseError,
 } from './RPCUtils';
 
 import { DeployProgressState, RunPipeline } from '../widgets/deploys-progress/DeployProgress';
@@ -104,12 +105,18 @@ export default class Commands {
     experiment: { id: string; name: string },
     experimentName: string,
   ) => {
-    let experimentsList: IExperiment[] = await _legacy_executeRpcAndShowRPCError(
-      this._notebook,
-      this._kernel,
-      'kfp.list_experiments',
-    );
-    if (experimentsList) {
+    let fetchedList: IExperiment[] | null = null;
+    try {
+      fetchedList = await _legacy_executeRpc(
+        this._notebook,
+        this._kernel,
+        'kfp.list_experiments',
+      );
+    } catch (error) {
+      console.warn('Could not fetch KFP experiments, KFP may not be available.', error);
+    }
+    let experimentsList: IExperiment[] = fetchedList ?? [];
+    if (experimentsList.length > 0) {
       experimentsList.push(NEW_EXPERIMENT);
     } else {
       experimentsList = [NEW_EXPERIMENT];
@@ -310,12 +317,22 @@ export default class Commands {
   };
 
   resumeStateIfExploreNotebook = async (notebookPath: string) => {
-    const exploration = await _legacy_executeRpcAndShowRPCError(
-      this._notebook,
-      this._kernel,
-      'nb.explore_notebook',
-      { source_notebook_path: notebookPath },
-    );
+    let exploration: any = null;
+    try {
+      exploration = await _legacy_executeRpc(
+        this._notebook,
+        this._kernel,
+        'nb.explore_notebook',
+        { source_notebook_path: notebookPath },
+      );
+    } catch (error) {
+      if (error instanceof BaseError) {
+        console.error('Kernel/backend unavailable, cannot check exploration state:', error);
+      } else {
+        console.warn('Could not check notebook exploration state.', error);
+      }
+      return;
+    }
 
     if (!exploration || !exploration.is_exploration) {
       return;
@@ -348,14 +365,22 @@ export default class Commands {
       ];
     }
     await NotebookUtils.showMessage(title, message);
-    await _legacy_executeRpcAndShowRPCError(
-      this._notebook,
-      this._kernel,
-      'nb.remove_marshal_dir',
-      {
-        source_notebook_path: notebookPath,
-      },
-    );
+    try {
+      await _legacy_executeRpc(
+        this._notebook,
+        this._kernel,
+        'nb.remove_marshal_dir',
+        {
+          source_notebook_path: notebookPath,
+        },
+      );
+    } catch (error) {
+      if (error instanceof BaseError) {
+        console.error('Kernel/backend unavailable, cannot remove marshal dir:', error);
+      } else {
+        console.warn('Could not remove marshal dir.', error);
+      }
+    }
   };
 
   findPodDefaultLabelsOnServer = async (): Promise<{

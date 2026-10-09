@@ -1,5 +1,8 @@
 name: Docs
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -34,7 +37,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8
+        with:
+          version: "0.12.23"
 
       - name: Install docs dependencies
         run: uv sync --extra docs

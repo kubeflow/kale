@@ -1,5 +1,8 @@
 name: Release
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
@@ -57,7 +60,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8
         with:
-          version: "latest"
+          version: "0.12.23"
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -95,7 +98,7 @@ jobs:
 
       - name: Check wheel
         run: |
-          pip install twine
+          pip install twine==7.0.0
           twine check dist/*.whl
 
       - name: Upload artifacts
@@ -179,6 +182,7 @@ jobs:
     if: ${{ inputs.target != 'dry-run' }}
     runs-on: ubuntu-latest
     environment: release
+    permissions: {}
     steps:
       - name: Download wheel
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -199,6 +203,7 @@ jobs:
     if: ${{ inputs.target == 'testpypi+pypi' }}
     runs-on: ubuntu-latest
     environment: production
+    permissions: {}
     steps:
       - name: Download wheel
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
