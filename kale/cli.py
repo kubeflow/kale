@@ -39,6 +39,10 @@ is provided both in the Notebook metadata and from CLI, the CLI parameter
 will take precedence.\n
 """
 
+# Used only when neither the notebook metadata nor the CLI names one.
+DEFAULT_PIPELINE_NAME = "kale-pipeline"
+DEFAULT_EXPERIMENT_NAME = "Kale-Pipeline-Experiment"
+
 METADATA_GROUP_DESC = """
 Override the arguments of the source Notebook's Kale metadata section
 """
@@ -85,12 +89,9 @@ def main():
     metadata_group.add_argument(
         "--experiment_name",
         type=str,
-        default="Kale-Pipeline-Experiment",
         help="Name of the created experiment",
     )
-    metadata_group.add_argument(
-        "--pipeline_name", type=str, default="kale-pipeline", help="Name of the deployed pipeline"
-    )
+    metadata_group.add_argument("--pipeline_name", type=str, help="Name of the deployed pipeline")
     metadata_group.add_argument(
         "--pipeline_description", type=str, help="Description of the deployed pipeline"
     )
@@ -127,7 +128,16 @@ def main():
         for a in mt_overrides_group._group_actions
         if getattr(args, a.dest, None) is not None
     }
-    processor = NotebookProcessor(args.nb, mt_overrides_group_dict)
+    # Passed as kwargs, not as metadata overrides: NotebookConfig resolves
+    # kwargs *below* the notebook's own metadata, so these act as a last-resort
+    # fallback for a notebook that names neither, while an explicit --pipeline_name
+    # still takes precedence (it lands in mt_overrides_group_dict).
+    processor = NotebookProcessor(
+        args.nb,
+        mt_overrides_group_dict,
+        pipeline_name=DEFAULT_PIPELINE_NAME,
+        experiment_name=DEFAULT_EXPERIMENT_NAME,
+    )
     pipeline = processor.run()
     imports_and_functions = processor.get_imports_and_functions()
     dsl_script_path = Compiler(pipeline, imports_and_functions).compile()
