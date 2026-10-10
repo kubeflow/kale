@@ -37,6 +37,7 @@ import { useNotebookMetadata } from './hooks/useNotebookMetadata';
 import { useDeployment } from './hooks/useDeployment';
 import { setLeftPanelCallbacks } from '../commands/kaleToolbar';
 import { resolveDefaultBaseImage } from '../lib/resolveDefaultBaseImage';
+import { RuntimeImages } from '../lib/runtimeImages';
 
 import {
   DeployType,
@@ -62,7 +63,7 @@ interface IProps {
   enableComposableNotebooks: boolean;
   enableVolumes: boolean;
   defaultBaseImageSetting: string;
-  runtimeImages: string[];
+  runtimeImages: RuntimeImages;
   envDefaultBaseImage: string;
   securityContext: ISecurityContext;
   outputPath: string;

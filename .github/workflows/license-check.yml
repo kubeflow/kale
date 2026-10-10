@@ -1,5 +1,8 @@
 name: License Header Check
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -14,7 +17,7 @@ jobs:
 
       - name: Install addlicense
         run: |
-          go install github.com/google/addlicense@latest
+          go install github.com/google/addlicense@v1.2.0
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Check license headers

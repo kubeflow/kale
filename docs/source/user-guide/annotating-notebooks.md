@@ -97,18 +97,28 @@ exposes.
 
 ### Runtime images
 
-The `runtimeImages` setting controls the container images available in the
-**Base Image** selector when configuring a pipeline step. The list can be
-customized in **JupyterLab Settings → Kale → Runtime images**.
+The `runtimeImages` setting maps display names to container image references
+available in the **Base Image** selector when configuring a pipeline step. The
+dictionary can be customized in **JupyterLab Settings → Kale → Runtime images**.
+The default entries are:
 
-The default list includes:
+```json
+{
+  "Python 3.12": "python:3.12",
+  "PyTorch 2.0": "pytorch/pytorch:2.0",
+  "TensorFlow latest": "tensorflow/tensorflow:latest"
+}
+```
 
-- `python:3.12`
-- `pytorch/pytorch:2.0`
-- `tensorflow/tensorflow:latest`
-
-Users can add, remove, or reorder images in the JupyterLab settings. Custom
-images can also be entered directly in the Base Image field.
+Users can add, rename, or remove entries in JupyterLab settings. The selector
+searches both names and image references. Custom references can also be entered
+directly by typing the reference and pressing Enter. Kale stores the image
+reference in the cell's `image:` tag, so the notebook and compiled pipeline do
+not depend on the display name. The cell label shows the configured name and
+image reference, shortening either when it is long. Hover over either to see
+its full text. Existing settings containing an image list are
+converted automatically; each reference initially serves as its own name until
+renamed.
 
 ## Output artifacts
 

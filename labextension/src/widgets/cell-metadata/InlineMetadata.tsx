@@ -23,6 +23,7 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import { CellMetadataContext } from '../../lib/CellMetadataContext';
 import { ISecretRef } from '../../lib/TagsUtils';
+import { getRuntimeImageName, RuntimeImages } from '../../lib/runtimeImages';
 
 interface IProps {
   stepName: string;
@@ -30,6 +31,7 @@ interface IProps {
   stepDependencies: string[];
   limits: { [id: string]: string };
   baseImage?: string;
+  runtimeImages: RuntimeImages;
   enableCaching?: boolean;
   generateHtmlReport?: boolean;
   secrets?: { [envName: string]: ISecretRef };
@@ -61,6 +63,7 @@ export const InlineMetadata: React.FC<IProps> = ({
   stepDependencies,
   limits,
   baseImage,
+  runtimeImages,
   enableCaching,
   generateHtmlReport,
   secrets,
@@ -149,9 +152,30 @@ export const InlineMetadata: React.FC<IProps> = ({
     </p>
   ) : null;
 
+  const baseImageName = baseImage
+    ? getRuntimeImageName(runtimeImages, baseImage)
+    : undefined;
   const baseImageText = baseImage ? (
-    <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
-      Base Image: {baseImage}
+    <p className="kale-inline-base-image">
+      <span className="kale-inline-base-image-label">Base Image:</span>
+      <span
+        className={`kale-inline-base-image-details${baseImageName ? ' has-name' : ''}`}
+      >
+        {baseImageName && (
+          <>
+            <strong
+              className="kale-inline-base-image-name"
+              title={baseImageName}
+            >
+              {baseImageName}
+            </strong>
+            <span className="kale-inline-base-image-separator">·</span>
+          </>
+        )}
+        <span className="kale-inline-base-image-reference" title={baseImage}>
+          {baseImage}
+        </span>
+      </span>
     </p>
   ) : null;
 

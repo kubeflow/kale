@@ -23,6 +23,10 @@ import TagsUtils from '../../../lib/TagsUtils';
 import { InlineMetadata } from '../InlineMetadata';
 import { ICellEditorData } from '../CellMetadataEditor';
 import { createPortal } from 'react-dom';
+import {
+  repairRuntimeImageTag,
+  RuntimeImages,
+} from '../../../lib/runtimeImages';
 
 export type Editors = { [index: string]: ICellEditorData };
 type SaveState = 'started' | 'completed' | 'failed';
@@ -44,6 +48,7 @@ function insertMetadataParent(
 
 interface IUseInlineMetadataOptions {
   resolvedDefaultBaseImage?: string;
+  runtimeImages: RuntimeImages;
   /** Called when the active cell's metadata changes (e.g. user edits step name). */
   onActiveMetadataChange?: () => void;
   /** Called when cells are added, removed, or change type. */
@@ -60,7 +65,7 @@ export function useInlineMetadata(
   notebook: NotebookPanel,
   enabled: boolean,
   activeCellIndex: number,
-  options: IUseInlineMetadataOptions = {},
+  options: IUseInlineMetadataOptions,
 ): { editors: Editors; metadataCmp: React.ReactPortal[] } {
   const [metadataCmp, setMetadataCmp] = useState<React.ReactPortal[]>([]);
   const [editors, setEditors] = useState<Editors>({});
@@ -71,12 +76,15 @@ export function useInlineMetadata(
   enabledRef.current = enabled;
   const resolvedDefaultBaseImageRef = useRef(options.resolvedDefaultBaseImage);
   resolvedDefaultBaseImageRef.current = options.resolvedDefaultBaseImage;
+  const runtimeImagesRef = useRef(options.runtimeImages);
+  runtimeImagesRef.current = options.runtimeImages;
   const onActiveMetadataChangeRef = useRef(options.onActiveMetadataChange);
   onActiveMetadataChangeRef.current = options.onActiveMetadataChange;
   const onCellsChangedRef = useRef(options.onCellsChanged);
   onCellsChangedRef.current = options.onCellsChanged;
 
   const portalContainersRef = useRef<HTMLDivElement[]>([]);
+  const repairingImageTagsRef = useRef(false);
 
   const removeOldPortalContainers = useCallback(() => {
     portalContainersRef.current.forEach(el => el.remove());
@@ -94,6 +102,7 @@ export function useInlineMetadata(
     const metadata: React.ReactPortal[] = [];
     const newEditors: Editors = {};
     const newContainers: HTMLDivElement[] = [];
+    const imageTagRepairs: { cell: ICellModel; tags: string[] }[] = [];
     const cells = nb.model.cells;
 
     for (let index = 0; index < cells.length; index++) {
@@ -105,6 +114,17 @@ export function useInlineMetadata(
       let tags = TagsUtils.getKaleCellTags(nb.content, index);
       if (!tags) {
         tags = { stepName: '', prevStepNames: [] };
+      }
+
+      const cellTags = CellUtils.getCellMetaData(nb.content, index, 'tags');
+      const repairedTags = cellTags
+        ? repairRuntimeImageTag(cellTags, runtimeImagesRef.current)
+        : null;
+      if (repairedTags) {
+        imageTagRepairs.push({ cell: cellModel, tags: repairedTags });
+        tags.baseImage = repairedTags
+          .find(tag => tag.startsWith('image:'))
+          ?.slice('image:'.length);
       }
 
       let previousStepName: string | undefined = '';
@@ -152,6 +172,7 @@ export function useInlineMetadata(
             stepDependencies={tags.prevStepNames}
             limits={tags.limits || {}}
             baseImage={tags.baseImage}
+            runtimeImages={runtimeImagesRef.current}
             enableCaching={tags.enableCaching}
             generateHtmlReport={tags.generateHtmlReport}
             secrets={tags.secrets || {}}
@@ -169,6 +190,14 @@ export function useInlineMetadata(
     portalContainersRef.current = newContainers;
     setMetadataCmp(metadata);
     setEditors(newEditors);
+    repairingImageTagsRef.current = true;
+    try {
+      imageTagRepairs.forEach(({ cell, tags }) =>
+        cell.setMetadata('tags', tags),
+      );
+    } finally {
+      repairingImageTagsRef.current = false;
+    }
   }, [removeOldPortalContainers]);
 
   const clear = useCallback(() => {
@@ -182,6 +211,10 @@ export function useInlineMetadata(
       generate();
     }
   }, [generate]);
+
+  useEffect(() => {
+    refresh();
+  }, [options.runtimeImages, refresh]);
 
   const handleSaveState = useCallback(
     (_context: DocumentRegistry.Context, state: SaveState) => {
@@ -214,6 +247,9 @@ export function useInlineMetadata(
 
   const onMetadataChange = useCallback(
     (_: any) => {
+      if (repairingImageTagsRef.current) {
+        return;
+      }
       refresh();
       onActiveMetadataChangeRef.current?.();
     },
@@ -250,17 +286,22 @@ export function useInlineMetadata(
   }, [notebook, handleSaveState, handleCellChange, generate, clear]);
 
   useEffect(() => {
-    if (!notebook?.model || !enabledRef.current) {
+    if (!notebook || !enabled) {
       return;
     }
-    const cellModel = notebook.model.cells.get(activeCellIndex);
-    if (!cellModel) {
-      return;
-    }
+    let cancelled = false;
+    let cellModel: ICellModel | undefined;
 
-    cellModel.metadataChanged.connect(onMetadataChange);
+    notebook.context.ready.then(() => {
+      if (cancelled || !notebook.model) {
+        return;
+      }
+      cellModel = notebook.model.cells.get(activeCellIndex);
+      cellModel?.metadataChanged.connect(onMetadataChange);
+    });
     return () => {
-      cellModel.metadataChanged.disconnect(onMetadataChange);
+      cancelled = true;
+      cellModel?.metadataChanged.disconnect(onMetadataChange);
     };
   }, [enabled, notebook, activeCellIndex, onMetadataChange]);
 

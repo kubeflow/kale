@@ -46,14 +46,16 @@ async function openKaleEnabledNotebook(page: Page): Promise<void> {
       '.jp-LauncherCard:has(.jp-LauncherCard-label[title="Python 3 (ipykernel)"])',
     )
     .first();
+  if (!(await pythonNotebook.isVisible())) {
+    await page.getByRole('button', { name: 'New Launcher' }).click();
+  }
   await pythonNotebook.click();
 
-  const notebookPanel = page.locator('.jp-NotebookPanel');
+  const notebookPanel = page.locator('.jp-NotebookPanel:visible');
   await expect(notebookPanel).toBeVisible({ timeout: 5000 });
-
   // Enable Kale
   const enableSwitch = page.locator('input[name="enableKale"]');
-  await enableSwitch.click();
+  await enableSwitch.check();
   await expect(enableSwitch).toBeChecked();
 }
 
@@ -77,6 +79,37 @@ async function dismissKaleErrorDialogs(page: Page): Promise<void> {
 
 function getDeployButtonGroup(page: Page): Locator {
   return page.locator('[aria-label="split button"]');
+}
+
+/** Creates a named step and opens its Base Image configuration. */
+async function openBaseImageDialog(page: Page): Promise<Locator> {
+  await openKaleEnabledNotebook(page);
+  await page
+    .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+    .evaluate((button: HTMLButtonElement) => button.click());
+  const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+  await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+  await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+  const configureStep = editor.getByRole('button', { name: 'Configure step' });
+  await expect(configureStep).toBeEnabled();
+  await configureStep.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+  await expect(
+    dialog.getByRole('combobox', { name: 'Base Image' }),
+  ).toBeVisible();
+  return dialog;
+}
+
+/** Reads the active cell's actual notebook tags, not just the displayed label. */
+async function getActiveCellTags(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const lab = (window as any).jupyterapp;
+    return (
+      lab.shell.currentWidget.content.activeCell.model.getMetadata('tags') ?? []
+    );
+  });
 }
 
 function getAddVolumeDialog(page: Page): Locator {
@@ -263,6 +296,74 @@ test.describe('Trigger a Pipeline Compilation', () => {
     // The button must keep the newly chosen action as its new name
     await expect(mainDeployButton).toBeEnabled({ timeout: 60000 });
     await expect(mainDeployButton).toHaveText('Compile and Save');
+  });
+});
+
+test.describe('Step base image', () => {
+  test('saves a custom image when the dialog closes without pressing Enter', async ({
+    page,
+  }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.fill('registry.example.com/team/image:v1');
+    await imageInput.press('Escape');
+    await dialog.getByRole('button', { name: 'Ok' }).click();
+
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:registry.example.com/team/image:v1');
+    await page.getByRole('button', { name: 'Configure step' }).click();
+    await expect(imageInput).toHaveValue('registry.example.com/team/image:v1');
+  });
+
+  test('stores the image reference when a named runtime image is selected', async ({
+    page,
+  }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.click();
+    await page.getByRole('option', { name: /Python 3\.12/ }).click();
+
+    await expect(imageInput).toHaveValue('Python 3.12');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveText('python:3.12');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:python:3.12');
+
+    await dialog.getByRole('button', { name: 'Ok' }).click();
+    await expect(page.locator('.kale-inline-base-image-name')).toHaveText(
+      'Python 3.12',
+    );
+    await page.getByRole('button', { name: 'Configure step' }).click();
+    await expect(imageInput).toHaveValue('Python 3.12');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveText('python:3.12');
+  });
+
+  test('reset to default removes the cell image override', async ({ page }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.click();
+    await page.getByRole('option', { name: /Python 3\.12/ }).click();
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:python:3.12');
+
+    await dialog.getByRole('button', { name: 'Reset to Default' }).click();
+
+    await expect(imageInput).toHaveValue('');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveCount(0);
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .not.toContain('image:python:3.12');
   });
 });
 
