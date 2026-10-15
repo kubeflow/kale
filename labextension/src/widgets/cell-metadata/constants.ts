@@ -43,6 +43,7 @@ export const KALE_TAG_PREFIXES = [
   'image:',
   'cache:',
   'report:',
+  'notebook:',
   'skip',
   'imports',
   'functions',

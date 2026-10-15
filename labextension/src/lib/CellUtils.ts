@@ -135,6 +135,24 @@ export default class CellUtilities {
   }
 
   /**
+   * @description Removes a key from a cell's metadata. Does nothing if the
+   * notebook, the cell or the key is not there.
+   * @param notebookPanel The notebook holding the cell.
+   * @param index The cell index to remove the metadata from.
+   * @param key The key to remove.
+   */
+  public static deleteCellMetaData(
+    notebookPanel: NotebookPanel,
+    index: number,
+    key: string,
+  ): void {
+    const cells = notebookPanel?.model?.cells;
+    if (cells && index >= 0 && index < cells.length) {
+      cells.get(index).deleteMetadata(key);
+    }
+  }
+
+  /**
    * @description Looks within the notebook for a cell containing the specified meta key
    * @param notebook The notebook to search in
    * @param key The metakey to search for
