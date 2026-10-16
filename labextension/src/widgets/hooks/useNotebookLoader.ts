@@ -18,7 +18,11 @@ import { Kernel } from '@jupyterlab/services';
 import { PageConfig } from '@jupyterlab/coreutils';
 import NotebookUtils from '../../lib/NotebookUtils';
 import Commands from '../../lib/Commands';
-import { DefaultState, IExperiment, NEW_EXPERIMENT } from '../LeftPanelTypes';
+import {
+  createDefaultMetadata,
+  IExperiment,
+  NEW_EXPERIMENT,
+} from '../LeftPanelTypes';
 import { ILoaderSetters } from './useNotebookMetadata';
 import DeployUtils from '../deploys-progress/DeployUtils';
 
@@ -236,17 +240,16 @@ export function useNotebookLoader({
               : sanitized,
           pipeline_description: notebookMetadata['pipeline_description'] || '',
           base_image: '',
-          steps_defaults: DefaultState.metadata.steps_defaults,
+          steps_defaults: createDefaultMetadata().steps_defaults,
         });
       } else {
         const defaultPipelineName = getNotebookFileName(notebook);
         const sanitized = sanitizePipelineName(defaultPipelineName);
         setMetadata(prev => ({
-          ...DefaultState.metadata,
+          ...createDefaultMetadata(),
           experiment: prev.experiment,
           experiment_name: prev.experiment_name,
           pipeline_name: sanitized,
-          base_image: DefaultState.metadata.base_image,
         }));
       }
     },
