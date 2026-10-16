@@ -406,6 +406,34 @@ test.describe('Cell tags', () => {
   });
 });
 
+test.describe('Experiment name', () => {
+  test('accepts any non-empty name up to 128 characters, as KFP does', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    const experimentName = page.getByLabel('Experiment Name');
+    await expect(experimentName).toBeVisible({ timeout: 60000 });
+    await page.getByLabel('Pipeline Name').fill('test-pipeline');
+    const deployButton = getDeployButtonGroup(page).locator('button').first();
+
+    // Uppercase letters and spaces are valid in KFP (e.g. its "Default")
+    await experimentName.fill('Taxicab Experiment');
+    await expect(deployButton).toBeEnabled({ timeout: 10000 });
+
+    await experimentName.fill('   ');
+    await expect(
+      page.getByText('Experiment name cannot be only spaces.'),
+    ).toBeVisible();
+    await expect(deployButton).toBeDisabled();
+
+    await experimentName.fill('a'.repeat(129));
+    await expect(
+      page.getByText('Experiment name must be 128 characters or fewer.'),
+    ).toBeVisible();
+    await expect(deployButton).toBeDisabled();
+  });
+});
+
 test.describe('Volumes panel — add a volume', () => {
   test('should add a volume and show it in the volumes list', async ({
     page,
