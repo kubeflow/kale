@@ -45,6 +45,12 @@ const GPU_TYPES = [
 ];
 const DEFAULT_GPU_TYPE = GPU_TYPES[0].value;
 
+/** The GPU type requested in `limits`, if any. Assumes there is at most one. */
+export const getGpuType = (limits: {
+  [id: string]: string;
+}): string | undefined =>
+  Object.keys(limits).find(key => GPU_TYPES.some(t => t.value === key));
+
 interface IGpuSectionProps {
   stepName: string;
   limits: { [id: string]: string };
@@ -62,11 +68,7 @@ export const GpuSection: React.FC<IGpuSectionProps> = ({
     limitValue: ILimitAction['limitValue'] = undefined,
   ) => ({ action, limitKey, limitValue });
 
-  // intersect the current limits and the GPU_TYPES. Assume there is at most 1.
-  const gpuType =
-    Object.keys(limits).filter(x =>
-      GPU_TYPES.map(t => t.value).includes(x),
-    )[0] || undefined;
+  const gpuType = getGpuType(limits);
   const gpuCount = gpuType && limits[gpuType];
 
   return (

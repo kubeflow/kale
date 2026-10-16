@@ -406,6 +406,36 @@ test.describe('Cell tags', () => {
   });
 });
 
+test.describe('Inline GPU label', () => {
+  test('only shows GPU limits as a GPU request', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      const shared = lab.shell.currentWidget.content.model.sharedModel;
+      shared.deleteCellRange(0, shared.cells.length);
+      shared.insertCells(0, [
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: { tags: ['step:prepare', 'limit:memory:8Gi'] },
+        },
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: {
+            tags: ['step:train', 'limit:cpu:2', 'limit:nvidia.com/gpu:1'],
+          },
+        },
+      ]);
+    });
+
+    const cells = page.locator('.jp-NotebookPanel:visible .jp-Cell');
+    await expect(cells.nth(1)).toContainText('GPU request: nvidia.com/gpu - 1');
+    await expect(cells.nth(0)).toContainText('prepare');
+    await expect(cells.nth(0)).not.toContainText('GPU request');
+  });
+});
+
 test.describe('Volumes panel — add a volume', () => {
   test('should add a volume and show it in the volumes list', async ({
     page,

@@ -24,6 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { CellMetadataContext } from '../../lib/CellMetadataContext';
 import { ISecretRef } from '../../lib/TagsUtils';
 import { getRuntimeImageName, RuntimeImages } from '../../lib/runtimeImages';
+import { getGpuType } from './dialogs/sections/GpuSection';
 
 interface IProps {
   stepName: string;
@@ -144,7 +145,8 @@ export const InlineMetadata: React.FC<IProps> = ({
     context.onEditorVisibilityChange(true);
   };
 
-  const gpuType = Object.keys(limits)[0] || undefined;
+  // Only GPU limits are a GPU request; a cell can also carry e.g. `limit:memory:...`
+  const gpuType = getGpuType(limits);
   const limitsText = gpuType ? (
     <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
       GPU request: {gpuType + ' - '}
