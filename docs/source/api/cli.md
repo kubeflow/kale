@@ -33,7 +33,7 @@ notebook's Kale metadata. If both are set, the CLI value wins.
 | Flag                      | Description                                                  |
 | ------------------------- | ------------------------------------------------------------ |
 | `--experiment_name`       | KFP experiment name. Default: `Kale-Pipeline-Experiment`.    |
-| `--pipeline_name`         | Name of the deployed pipeline. Default: `kale-pipeline`.     |
+| `--pipeline_name`         | Name of the deployed pipeline. Default: the notebook's `pipeline_name`, else its file name plus a hash of its path. |
 | `--pipeline_description`  | Description shown in the KFP UI.                             |
 | `--docker_image`          | Default base image for every step.                           |
 | `--kfp_host`              | KFP API endpoint, as `<host>:<port>` or a full URL.          |
