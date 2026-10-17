@@ -142,27 +142,44 @@ upgrade_kfp() {
 # ---------------------------------------------------------------------------
 
 start_port_forward() {
-    # Kill any existing port-forward for this session
-    if [ -f "${PID_FILE}" ]; then
-        kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+    # Stop only the port-forward process recorded by this workflow.
+    if [[ -f "${PID_FILE}" ]]; then
+        OLD_PID="$(cat "${PID_FILE}")"
+        if [[ "${OLD_PID}" =~ ^[0-9]+$ ]]; then
+            kill "${OLD_PID}" 2>/dev/null || true
+        fi
         rm -f "${PID_FILE}"
     fi
 
-    # Also kill any stale kubectl port-forward on the same port
-    pkill -f "kubectl port-forward.*ml-pipeline-ui.*${LOCAL_PORT}" 2>/dev/null || true
-
     info "Starting port-forward: localhost:${LOCAL_PORT} → kubeflow/ml-pipeline-ui:80"
-    kubectl port-forward -n kubeflow svc/ml-pipeline-ui "${LOCAL_PORT}:80" >/dev/null 2>&1 &
-    echo $! > "${PID_FILE}"
-    sleep 2
 
-    # Smoke-test: the UI should respond
-    if curl -sf --max-time 5 "http://localhost:${LOCAL_PORT}" >/dev/null 2>&1; then
-        ok "Port-forward verified (HTTP 200)"
-    else
-        warn "Port-forward started but the UI did not respond yet — it may need another minute."
-        warn "Check status with: make kfp-dev-status"
-    fi
+    PF_LOG="/tmp/kale-kfp-port-forward.log"
+
+    nohup kubectl port-forward \
+        -n kubeflow \
+        svc/ml-pipeline-ui \
+        "${LOCAL_PORT}:80" \
+        >"${PF_LOG}" 2>&1 < /dev/null &
+
+    PF_PID=$!
+    echo "${PF_PID}" > "${PID_FILE}"
+
+    info "Port-forward process started with PID ${PF_PID}"
+
+# Wait until the port-forward is actually ready.
+    for _ in $(seq 1 15); do
+        if curl -sf --max-time 2 \
+            "http://localhost:${LOCAL_PORT}/apis/v2beta1/healthz" \
+            >/dev/null 2>&1; then
+            ok "Port-forward verified and KFP API is healthy"
+            return
+        fi
+        sleep 1
+    done
+
+    warn "Port-forward did not become ready within 15 seconds."
+    warn "Check the log with: cat ${PF_LOG}"
+    warn "Check status with: make kfp-dev-status"
 }
 
 # ---------------------------------------------------------------------------

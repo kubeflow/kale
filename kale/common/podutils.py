@@ -21,6 +21,11 @@ from kale.common import k8sutils
 NAMESPACE_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
 
+def is_running_in_pod():
+    """Return whether the Kubernetes service-account namespace file exists."""
+    return os.path.isfile(NAMESPACE_PATH)
+
+
 def get_namespace():
     """Get the current namespace."""
     with open(NAMESPACE_PATH) as f:
