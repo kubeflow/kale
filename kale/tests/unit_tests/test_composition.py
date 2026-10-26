@@ -420,6 +420,7 @@ def test_step_config_survives_composition(tmp_path, monkeypatch):
                 [
                     "step:work",
                     "limit:nvidia.com/gpu:2",
+                    "limit:memory:2Gi",
                     "label:team:ml",
                     "annotation:owner:yash",
                     "cache:enabled",
@@ -444,6 +445,7 @@ def test_step_config_survives_composition(tmp_path, monkeypatch):
     # config of a referenced notebook's step lands in that notebook's module
     module = _module(tmp_path, "child")
     assert 'work_task.set_accelerator_type("nvidia.com/gpu").set_accelerator_limit(2)' in module
+    assert 'work_task.set_memory_limit("2Gi")' in module
     assert 'add_pod_label(task=work_task, label_key="team", label_value="ml")' in module
     assert 'add_pod_annotation(task=work_task, annotation_key="owner"' in module
     assert "work_task.set_caching_options(enable_caching=True)" in module

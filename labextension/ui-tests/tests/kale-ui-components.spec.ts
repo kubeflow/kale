@@ -406,6 +406,89 @@ test.describe('Cell tags', () => {
   });
 });
 
+test.describe('Inline GPU label', () => {
+  test('only shows GPU limits as a GPU request', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      const shared = lab.shell.currentWidget.content.model.sharedModel;
+      shared.deleteCellRange(0, shared.cells.length);
+      shared.insertCells(0, [
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: { tags: ['step:prepare', 'limit:memory:8Gi'] },
+        },
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: {
+            tags: ['step:train', 'limit:cpu:2', 'limit:nvidia.com/gpu:1'],
+          },
+        },
+      ]);
+    });
+
+    const cells = page.locator('.jp-NotebookPanel:visible .jp-Cell');
+    await expect(cells.nth(1)).toContainText('GPU request: nvidia.com/gpu - 1');
+    await expect(cells.nth(0)).toContainText('prepare');
+    await expect(cells.nth(0)).toContainText('Memory limit: 8Gi');
+    await expect(cells.nth(0)).not.toContainText('GPU request');
+  });
+});
+
+test.describe('Step memory limit', () => {
+  test('keeps the limit while its value is cleared and retyped', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+    await editor.getByRole('button', { name: 'Configure step' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+    await dialog.getByRole('tab', { name: 'Memory' }).click();
+    const memorySwitch = dialog.locator('input[name="enableMemoryLimit"]');
+    const memoryInput = dialog.getByLabel('Memory Limit (e.g., 2Gi)');
+
+    await memorySwitch.click();
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:2Gi');
+
+    await memoryInput.fill('512Mi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:512Mi');
+
+    // Clearing the field keeps the limit on and its last valid value
+    await memoryInput.fill('');
+    await expect(memorySwitch).toBeChecked();
+    await expect(memoryInput).toBeEnabled();
+    await expect(
+      dialog.getByText('Enter a memory limit, e.g. 2Gi.'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    // A value KFP would reject is not written
+    await memoryInput.fill('1.5Gi');
+    await expect(
+      dialog.getByText('Use a whole number with an optional unit'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    await memoryInput.fill('4Gi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:4Gi');
+    expect(await getActiveCellTags(page)).not.toContain('limit:memory:512Mi');
+  });
+});
+
 test.describe('Experiment name', () => {
   test('accepts any non-empty name up to 128 characters, as KFP does', async ({
     page,
