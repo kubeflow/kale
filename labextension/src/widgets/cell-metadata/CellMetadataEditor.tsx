@@ -33,6 +33,7 @@ import {
   NOTEBOOK_PATH_ERROR_MSG,
   RESERVED_CELL_NAMES,
   STEP_NAME_ERROR_MSG,
+  STEP_NAME_PATTERN,
 } from './constants';
 
 export {
@@ -139,20 +140,43 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
 
   const [stepNameErrorMsg, setStepNameErrorMsg] = useState(STEP_NAME_ERROR_MSG);
 
+  const isDuplicateStepName = useCallback(
+    (value: string) =>
+      value !== stepName &&
+      TagsUtils.getAllSteps(notebook.content).includes(value),
+    [notebook, stepName],
+  );
+
   const onBeforeUpdate = useCallback(
     (value: string) => {
-      if (value === stepName) {
-        return false;
-      }
-      const stepNames = TagsUtils.getAllSteps(notebook.content);
-      if (stepNames.includes(value)) {
+      if (isDuplicateStepName(value)) {
         setStepNameErrorMsg('This name already exists.');
         return true;
       }
       setStepNameErrorMsg(STEP_NAME_ERROR_MSG);
       return false;
     },
-    [notebook, stepName],
+    [isDuplicateStepName],
+  );
+
+  // What the user is typing. Only valid, unused names are written to the cell
+  // tags, so an invalid or duplicate name is shown with its error but never saved.
+  const [stepNameInput, setStepNameInput] = useState(stepName);
+  React.useEffect(() => {
+    setStepNameInput(stepName);
+  }, [stepName]);
+
+  const onStepNameChange = useCallback(
+    (value: string) => {
+      setStepNameInput(value);
+      if (
+        new RegExp(STEP_NAME_PATTERN).test(value) &&
+        !isDuplicateStepName(value)
+      ) {
+        updateCellTags.updateStepName(value);
+      }
+    },
+    [isDuplicateStepName, updateCellTags],
   );
 
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
@@ -204,9 +228,9 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
               <>
                 <Input
                   label={'Step name'}
-                  updateValue={updateCellTags.updateStepName}
-                  value={stepName}
-                  regex={'^([_a-z]([_a-z0-9]*)?)?$'}
+                  updateValue={onStepNameChange}
+                  value={stepNameInput}
+                  regex={STEP_NAME_PATTERN}
                   regexErrorMsg={stepNameErrorMsg}
                   variant="outlined"
                   onBeforeUpdate={onBeforeUpdate}

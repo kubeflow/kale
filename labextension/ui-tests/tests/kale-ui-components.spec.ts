@@ -154,6 +154,18 @@ test.beforeEach(async ({ page }) => {
   await acceptUnsavedChangesPrompt(page);
 });
 
+// Every test opens a new notebook, and with it a kernel. Shut them down so they
+// don't pile up on the shared server and slow JupyterLab down for later tests.
+test.afterEach(async ({ page }) => {
+  await page
+    .evaluate(async () => {
+      const lab = (window as any).jupyterapp;
+      await lab?.serviceManager.sessions.shutdownAll();
+      await lab?.serviceManager.kernels.shutdownAll();
+    })
+    .catch(() => undefined);
+});
+
 test.describe('Kale Empty State', () => {
   test('should open the Kale panel and verify the empty-state components', async ({
     page,
@@ -403,6 +415,37 @@ test.describe('Cell tags', () => {
     const tags = await getActiveCellTags(page);
     expect(tags).toEqual(expect.arrayContaining(otherTags));
     expect(tags).not.toContain('step:train');
+  });
+});
+
+test.describe('Step name', () => {
+  test('does not save an invalid or duplicate name', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    // A second step the first cell's name must not clash with
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      lab.shell.currentWidget.content.model.sharedModel.insertCells(1, [
+        { cell_type: 'code', source: '', metadata: { tags: ['step:load'] } },
+      ]);
+    });
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .first()
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    const stepName = editor.getByRole('textbox', { name: 'Step name' });
+
+    await stepName.fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('Train Model');
+    await expect(editor.getByText('Step name must consist of')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('load');
+    await expect(editor.getByText('This name already exists.')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+    expect(await getActiveCellTags(page)).not.toContain('step:load');
   });
 });
 
