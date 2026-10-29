@@ -154,46 +154,34 @@ podman run --add-host=host.docker.internal:host-gateway ...
 # Option 2: Use host network
 podman run --network=host ...
 ```
+### One-command KFP Development Workflow
 
-### How serve-wheel Works
-
-The `make kfp-serve` command:
-
-1. Builds the wheel with a fixed version (`2.0.0a1` by default)
-2. Copies the wheel to `.kfp-wheels/` directory
-3. Starts a simple HTTP server on port 8765
-4. Kind/Docker clusters can reach this server via `host.docker.internal:8765`
-
-The fixed version ensures reproducibility - you can rebuild the wheel multiple
-times and it will always have the same version, so compiled pipelines continue
-to work. The version is set in `kale/__init__.py`.
-
-When you set `KALE_PIP_INDEX_URLS`, Kale's compiler includes this URL in the
-generated KFP DSL. The pipeline components then install Kale from your local
-server instead of PyPI.
-
-### Environment Variables
-
-When using HTTP URLs for package indexes, pip requires them to be marked as trusted:
-
-| Variable | Purpose |
-|----------|---------|
-| `KALE_PIP_INDEX_URLS` | Comma-separated list of pip index URLs |
-| `KALE_PIP_TRUSTED_HOSTS` | Comma-separated list of trusted hosts (required for HTTP) |
-
-### CLI Workflow
+For local development with a Kubeflow Pipelines (KFP) cluster, run:
 
 ```bash
-# Terminal 1: Serve the wheel
-make kfp-serve
-
-# Terminal 2: Compile (env vars are set automatically)
-make kfp-compile NB=examples/base/candies_sharing.ipynb
-
-# The generated pipeline is at .kale/<notebook-name>.kale.py
-# Upload it to KFP UI or use kfp-run to submit directly
+make kfp-dev NB=examples/base/candies_sharing.ipynb
 ```
 
+This target checks the wheel-server port, stops an existing managed wheel server before rebuilding the wheel directory, builds the local Kale wheel, ensures the KFP development environment is running, starts the wheel server, and submits the notebook to KFP.
+
+The wheel server defaults to port `8765`, and the KFP UI defaults to port `8080`. Override these values with `KFP_PORT` and `KFP_LOCAL_PORT` when needed.
+
+### Manual KFP Workflow
+
+You can run the steps separately:
+
+```bash
+make kfp-build
+make kfp-serve
+make kfp-compile NB=examples/base/candies_sharing.ipynb
+make kfp-run NB=examples/base/candies_sharing.ipynb KFP_HOST=http://localhost:8080
+```
+
+`make kfp-serve` builds the wheel, copies it to `.kfp-wheels/`, and starts an HTTP server. When configured, Kale's compiler includes the local package index in the generated pipeline so pipeline components can install the local wheel instead of PyPI.
+
+### Wheel Server Host Address
+
+`KFP_HOST_ADDR` configures the address KFP pods use to reach the local wheel server. The Makefile defaults to `host.k3d.internal` on Linux and `host.docker.internal` on other operating systems. Override `KFP_HOST_ADDR` if your cluster networking requires a different address.
 ### Extension Workflow (JupyterLab UI)
 
 To use the Kale extension with your local wheel:
