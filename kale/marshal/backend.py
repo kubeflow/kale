@@ -109,7 +109,7 @@ class MarshalBackend:
             log.warning(
                 "Failed to import %s (%s). Falling back to default backend.", self.display_name, e
             )
-            self._default_save(obj, name)  # always try the default save
+            self._default_save(obj, abs_path)  # always try the default save
         return abs_path
 
     def save(self, obj: Any, path: str):
