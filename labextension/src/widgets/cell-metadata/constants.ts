@@ -72,6 +72,10 @@ export const RESERVED_CELL_NAMES_CHIP_COLOR: { [id: string]: string } = {
   functions: 'a32626',
 };
 
+// Same rule as the backend's `step:` tag; an empty name merges the cell into
+// the previous step.
+export const STEP_NAME_PATTERN = '^([_a-z]([_a-z0-9]*)?)?$';
+
 export const STEP_NAME_ERROR_MSG =
   "Step name must consist of lower case alphanumeric characters or '_', and can not start with a digit.";
 
