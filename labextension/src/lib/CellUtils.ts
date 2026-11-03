@@ -101,8 +101,6 @@ export default class CellUtilities {
    * @param index: The cell index to read metadata from
    * @param key The key of the value to create.
    * @param value The value to set.
-   * @param save Default is false. Whether the notebook should be saved after the meta data is set.
-   * Note: This function will not wait for the save to complete, it only sends a save request.
    * @returns any - The old value for the key, or undefined if it did not exist.
    */
   // here there has to be any type -

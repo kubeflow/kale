@@ -16,12 +16,11 @@ import * as React from 'react';
 import { Input } from './Input';
 import { Select, ISelectOption } from './Select';
 import { IExperiment, NEW_EXPERIMENT } from '../widgets/LeftPanel';
+import { EXPERIMENT_NAME_MAX_LENGTH } from '../widgets/LeftPanelTypes';
 
-const regex: string = '^[a-z]([-a-z0-9]*[a-z0-9])?$';
-const regexErrorMsg: string =
-  'Experiment name may consist of alphanumeric ' +
-  "characters, '-', and must start with a lowercase character and end with " +
-  'a lowercase alphanumeric character.';
+// KFP accepts any non-empty experiment name (see EXPERIMENT_NAME_MAX_LENGTH).
+const regex: string = '\\S';
+const regexErrorMsg: string = 'Experiment name cannot be only spaces.';
 
 interface IExperimentInput {
   updateValue: (experiment: IExperiment) => void;
@@ -74,6 +73,8 @@ export const ExperimentInput: React.FunctionComponent<
             label="Experiment Name"
             regex={regex}
             regexErrorMsg={regexErrorMsg}
+            maxLength={EXPERIMENT_NAME_MAX_LENGTH}
+            maxLengthErrorMsg={`Experiment name must be ${EXPERIMENT_NAME_MAX_LENGTH} characters or fewer.`}
             variant="standard"
             inputIndex={0}
           />
