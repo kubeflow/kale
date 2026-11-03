@@ -40,6 +40,8 @@
     {%- for limit_key, limit_value in step.config.limits.items() %}
     {%- if limit_key in ['nvidia.com/gpu', 'amd.com/gpu'] %}
     {{ task_var }}.set_accelerator_type("{{ limit_key }}").set_accelerator_limit({{ limit_value }})
+    {%- elif limit_key == 'memory' %}
+    {{ task_var }}.set_memory_limit("{{ limit_value }}")
     {%- endif %}
     {%- endfor %}
     {%- endif %}
