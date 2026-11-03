@@ -140,7 +140,9 @@ export default class TagsUtils {
         .map(lim => {
           const values = lim.split(':');
           // get the limit key and value
-          limits[values[1]] = values[2];
+          if (values[1] && values[2]) {
+            limits[values[1]] = values[2];
+          }
         });
 
       const secrets: { [envName: string]: ISecretRef } = {};
@@ -252,7 +254,9 @@ export default class TagsUtils {
     const tags = [nb]
       .concat(stepDependencies.map(v => 'prev:' + v))
       .concat(
-        Object.keys(limits).map(lim => 'limit:' + lim + ':' + limits[lim]),
+        Object.keys(limits)
+          .filter(lim => limits[lim] && String(limits[lim]).trim() !== '')
+          .map(lim => 'limit:' + lim + ':' + limits[lim]),
       )
       .concat(
         Object.keys(secrets).map(

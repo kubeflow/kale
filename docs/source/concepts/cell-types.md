@@ -159,6 +159,7 @@ A step cell can carry additional tags to customize its pod spec:
 # tags: step:train_gpu, prev:prepare_data,
 #       image:pytorch/pytorch:2.0-cuda12,
 #       limit:nvidia.com/gpu:1,
+#       limit:memory:4Gi,
 #       annotation:team:ml,
 #       label:env:prod,
 #       cache:disabled,
@@ -166,8 +167,26 @@ A step cell can carry additional tags to customize its pod spec:
 ```
 
 - **`image:<image>`** — use a custom base image for just this step.
-- **`limit:<resource>:<value>`** — request GPU, memory, or any other
-  resource (e.g. `limit:memory:8Gi`).
+- **`limit:<resource>:<value>`** — set a resource limit for the step.
+  Supported resources are GPUs (`limit:nvidia.com/gpu:1`,
+  `limit:amd.com/gpu:1`) and memory (`limit:memory:8Gi`). You can also set
+  them in the **GPU** and **Memory** tabs of the step's Configure Step dialog.
+  Other resources, such as `cpu`, are not applied yet.
+
+#### Memory limit values
+
+A memory limit is a whole number with an optional unit, the format KFP
+accepts:
+
+| Unit | Meaning | Example |
+|------|---------|---------|
+| none | bytes | `1073741824` |
+| `Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei` | powers of 1024 | `512Mi`, `2Gi` |
+| `K`, `M`, `G`, `T`, `P`, `E` | powers of 1000 | `500M`, `1G` |
+
+Decimals, spaces and lowercase units are not accepted: write `1536Mi`
+instead of `1.5Gi`, and `2Gi` instead of `2 Gi` or `2gi`. The Memory tab only
+saves values in this format.
 - **`annotation:<k>:<v>`** / **`label:<k>:<v>`** — add Kubernetes metadata
   to the step's pod. Useful for cost allocation, scheduling hints, or
   integration with observability tooling.
