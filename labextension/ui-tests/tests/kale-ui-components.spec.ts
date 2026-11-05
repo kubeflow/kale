@@ -154,6 +154,18 @@ test.beforeEach(async ({ page }) => {
   await acceptUnsavedChangesPrompt(page);
 });
 
+// Every test opens a new notebook, and with it a kernel. Shut them down so they
+// don't pile up on the shared server and slow JupyterLab down for later tests.
+test.afterEach(async ({ page }) => {
+  await page
+    .evaluate(async () => {
+      const lab = (window as any).jupyterapp;
+      await lab?.serviceManager.sessions.shutdownAll();
+      await lab?.serviceManager.kernels.shutdownAll();
+    })
+    .catch(() => undefined);
+});
+
 test.describe('Kale Empty State', () => {
   test('should open the Kale panel and verify the empty-state components', async ({
     page,
@@ -403,6 +415,120 @@ test.describe('Cell tags', () => {
     const tags = await getActiveCellTags(page);
     expect(tags).toEqual(expect.arrayContaining(otherTags));
     expect(tags).not.toContain('step:train');
+  });
+});
+
+test.describe('Step name', () => {
+  test('does not save an invalid or duplicate name', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    // A second step the first cell's name must not clash with
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      lab.shell.currentWidget.content.model.sharedModel.insertCells(1, [
+        { cell_type: 'code', source: '', metadata: { tags: ['step:load'] } },
+      ]);
+    });
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .first()
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    const stepName = editor.getByRole('textbox', { name: 'Step name' });
+
+    await stepName.fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('Train Model');
+    await expect(editor.getByText('Step name must consist of')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('load');
+    await expect(editor.getByText('This name already exists.')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+    expect(await getActiveCellTags(page)).not.toContain('step:load');
+  });
+});
+
+test.describe('Inline GPU label', () => {
+  test('only shows GPU limits as a GPU request', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      const shared = lab.shell.currentWidget.content.model.sharedModel;
+      shared.deleteCellRange(0, shared.cells.length);
+      shared.insertCells(0, [
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: { tags: ['step:prepare', 'limit:memory:8Gi'] },
+        },
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: {
+            tags: ['step:train', 'limit:cpu:2', 'limit:nvidia.com/gpu:1'],
+          },
+        },
+      ]);
+    });
+
+    const cells = page.locator('.jp-NotebookPanel:visible .jp-Cell');
+    await expect(cells.nth(1)).toContainText('GPU request: nvidia.com/gpu - 1');
+    await expect(cells.nth(0)).toContainText('prepare');
+    await expect(cells.nth(0)).toContainText('Memory limit: 8Gi');
+    await expect(cells.nth(0)).not.toContainText('GPU request');
+  });
+});
+
+test.describe('Step memory limit', () => {
+  test('keeps the limit while its value is cleared and retyped', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+    await editor.getByRole('button', { name: 'Configure step' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+    await dialog.getByRole('tab', { name: 'Memory' }).click();
+    const memorySwitch = dialog.locator('input[name="enableMemoryLimit"]');
+    const memoryInput = dialog.getByLabel('Memory Limit (e.g., 2Gi)');
+
+    await memorySwitch.click();
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:2Gi');
+
+    await memoryInput.fill('512Mi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:512Mi');
+
+    // Clearing the field keeps the limit on and its last valid value
+    await memoryInput.fill('');
+    await expect(memorySwitch).toBeChecked();
+    await expect(memoryInput).toBeEnabled();
+    await expect(
+      dialog.getByText('Enter a memory limit, e.g. 2Gi.'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    // A value KFP would reject is not written
+    await memoryInput.fill('1.5Gi');
+    await expect(
+      dialog.getByText('Use a whole number with an optional unit'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    await memoryInput.fill('4Gi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:4Gi');
+    expect(await getActiveCellTags(page)).not.toContain('limit:memory:512Mi');
   });
 });
 
