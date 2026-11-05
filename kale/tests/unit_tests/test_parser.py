@@ -295,3 +295,38 @@ def test_compiler_includes_html_report_when_explicitly_enabled():
 
     assert "my_step_html_report: Output[HTML]" in component_code
     assert "_kale_html_artifact = _kale_run_code(_kale_blocks)" in component_code
+
+
+@pytest.mark.parametrize(
+    "tag,expected",
+    [
+        ("annotation:owner:yash", ("owner", "yash")),
+        (
+            "annotation:example.com/dashboard:http://grafana.local:3000/d/abc",
+            ("example.com/dashboard", "http://grafana.local:3000/d/abc"),
+        ),
+        (
+            "annotation:example.com/started-at:2026-09-25T10:00:00Z",
+            ("example.com/started-at", "2026-09-25T10:00:00Z"),
+        ),
+        ('annotation:example.com/config:{"lr": 0.01}', ("example.com/config", '{"lr": 0.01}')),
+    ],
+)
+def test_parse_metadata_annotation_value_keeps_colons(notebook_processor, tag, expected):
+    """Everything after the annotation key is the value, ':' included."""
+    tags = notebook_processor.parse_cell_metadata({"tags": ["step:test", tag]})
+
+    key, value = expected
+    assert tags["annotations"] == {key: value}
+
+
+def test_parse_steps_defaults_annotation_value_keeps_colons(dummy_nb_config):
+    """Pipeline-wide annotations go through the same parsing and keep ':' too."""
+    config = NotebookConfig(
+        **dummy_nb_config,
+        steps_defaults=["annotation:example.com/dashboard:http://grafana.local:3000"],
+    )
+
+    assert config.steps_defaults["annotations"] == {
+        "example.com/dashboard": "http://grafana.local:3000"
+    }
