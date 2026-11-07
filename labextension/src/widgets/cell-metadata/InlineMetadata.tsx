@@ -160,6 +160,12 @@ export const InlineMetadata: React.FC<IProps> = ({
     </p>
   ) : null;
 
+  const cpuLimitText = limits['cpu'] ? (
+    <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
+      CPU limit: {limits['cpu']}
+    </p>
+  ) : null;
+
   const baseImageName = baseImage
     ? getRuntimeImageName(runtimeImages, baseImage)
     : undefined;
@@ -218,6 +224,7 @@ export const InlineMetadata: React.FC<IProps> = ({
         ) : null}
         {dependencies}
         {limitsText}
+        {cpuLimitText}
         {memoryLimitText}
         {baseImageText}
         {cacheText}

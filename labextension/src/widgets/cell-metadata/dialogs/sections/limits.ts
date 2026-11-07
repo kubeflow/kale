@@ -14,7 +14,7 @@
 
 /**
  * Shared by the dialog sections that edit a step's resource limits
- * (GPU, memory).
+ * (GPU, CPU, memory).
  */
 
 export interface ILimitAction {
