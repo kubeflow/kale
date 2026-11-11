@@ -6,7 +6,8 @@ node_modules/
 *.egg-info/
 .ipynb_checkpoints
 *.tsbuildinfo
-.vscode/
+.vscode/*
+!.vscode/launch.json
 jupyterlab_kubeflow_kale/labextension
 .kale/
 # Integration tests
