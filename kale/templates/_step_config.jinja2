@@ -42,6 +42,8 @@
     {{ task_var }}.set_accelerator_type("{{ limit_key }}").set_accelerator_limit({{ limit_value }})
     {%- elif limit_key == 'memory' %}
     {{ task_var }}.set_memory_limit("{{ limit_value }}")
+    {%- elif limit_key == 'cpu' %}
+    {{ task_var }}.set_cpu_limit("{{ limit_value }}")
     {%- endif %}
     {%- endfor %}
     {%- endif %}

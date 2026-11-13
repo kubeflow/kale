@@ -26,6 +26,7 @@ import {
 import { ISecretRef } from '../../../lib/TagsUtils';
 import { BaseImageSection } from './sections/BaseImageSection';
 import { GpuSection } from './sections/GpuSection';
+import { CpuSection } from './sections/CpuSection';
 import { ILimitAction } from './sections/limits';
 import { MemorySection } from './sections/MemorySection';
 import { CacheSection } from './sections/CacheSection';
@@ -96,6 +97,16 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
       label: 'GPU',
       render: () => (
         <GpuSection
+          stepName={props.stepName}
+          limits={props.limits}
+          updateLimits={props.updateLimits}
+        />
+      ),
+    },
+    {
+      label: 'CPU',
+      render: () => (
+        <CpuSection
           stepName={props.stepName}
           limits={props.limits}
           updateLimits={props.updateLimits}

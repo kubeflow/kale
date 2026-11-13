@@ -477,6 +477,40 @@ test.describe('Inline GPU label', () => {
     await expect(cells.nth(0)).toContainText('prepare');
     await expect(cells.nth(0)).toContainText('Memory limit: 8Gi');
     await expect(cells.nth(0)).not.toContainText('GPU request');
+    await expect(cells.nth(1)).toContainText('CPU limit: 2');
+  });
+});
+
+test.describe('Step CPU limit', () => {
+  test('saves a milli-CPU limit and rejects invalid values', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+    await editor.getByRole('button', { name: 'Configure step' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+    await dialog.getByRole('tab', { name: 'CPU' }).click();
+    const cpuSwitch = dialog.locator('input[name="enableCpuLimit"]');
+    const cpuInput = dialog.getByLabel('CPU Limit (e.g., 500m)');
+
+    await cpuSwitch.click();
+    await expect.poll(() => getActiveCellTags(page)).toContain('limit:cpu:1');
+
+    await cpuInput.fill('500m');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:cpu:500m');
+
+    await cpuInput.fill('two');
+    await expect(
+      dialog.getByText('Use a number with an optional milli-CPU suffix'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:cpu:500m');
   });
 });
 
