@@ -26,7 +26,7 @@ from typing import Any
 import nbformat as nb
 import networkx as nx
 
-from kale.common import astutils, flakeutils, graphutils, kfutils, utils
+from kale.common import astutils, flakeutils, graphutils, kfutils, podutils, utils
 from kale.config import Field, validators
 from kale.pipeline import Pipeline, PipelineConfig
 from kale.processors.constants import (
@@ -248,10 +248,14 @@ class NotebookProcessor:
     def _configure_poddefaults(self):
         """Detect and configure PodDefaults labels."""
         _pod_defaults_labels = {}
-        try:
-            _pod_defaults_labels = kfutils.find_poddefault_labels()
-        except Exception as e:
-            log.warning("Could not retrieve PodDefaults. Reason: %s", e)
+        if podutils.is_running_in_pod():
+            try:
+                _pod_defaults_labels = kfutils.find_poddefault_labels()
+            except Exception as e:
+                log.warning("Could not retrieve PodDefaults. Reason: %s", e)
+        else:
+            log.debug("Skipping PodDefaults detection outside Kubernetes.")
+
         self.pipeline.config.steps_defaults[LABELS] = {
             **self.pipeline.config.steps_defaults.get(LABELS, {}),
             **_pod_defaults_labels,
