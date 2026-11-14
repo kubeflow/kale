@@ -23,7 +23,7 @@ import {
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { Kernel } from '@jupyterlab/services';
 import {
-  DefaultState,
+  createDefaultMetadata,
   IDeployPanelCustomLinks,
   IExperiment,
   IKaleNotebookMetadata,
@@ -34,7 +34,6 @@ import { useNotebookMetadataPersistence } from './useNotebookMetadataPersistence
 import { useEnableByDefaultEffect } from './useEnableByDefaultEffect';
 
 const KALE_NOTEBOOK_METADATA_KEY = 'kubeflow_notebook';
-const defaultMetadata = DefaultState.metadata;
 
 export interface INotebookMetadataState {
   metadata: IKaleNotebookMetadata;
@@ -85,8 +84,9 @@ export function useNotebookMetadata({
   kernel,
   enableKaleByDefault,
 }: IUseNotebookMetadataParams): INotebookMetadataState {
-  const [metadata, setMetadata] =
-    useState<IKaleNotebookMetadata>(defaultMetadata);
+  const [metadata, setMetadata] = useState<IKaleNotebookMetadata>(
+    createDefaultMetadata,
+  );
   const [experiments, setExperiments] = useState<IExperiment[]>([]);
   const [gettingExperiments, setGettingExperiments] = useState(false);
   const [isEnabled, setIsEnabled] = useState(false);
@@ -132,7 +132,7 @@ export function useNotebookMetadata({
   }, []);
 
   const resetForNoNotebook = useCallback(() => {
-    setMetadata(defaultMetadata);
+    setMetadata(createDefaultMetadata());
     setExperiments([]);
     setGettingExperiments(false);
     setIsEnabled(false);
