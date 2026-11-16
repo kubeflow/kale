@@ -112,3 +112,54 @@ def test_check_unique_param_names_raises_on_collision(names, expected):
     """Parameters deriving the same name raise ValueError at compile time."""
     with pytest.raises(ValueError, match=expected):
         _compiler_with_params(names)._check_unique_param_names()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "plain value",
+        "Summarize the user's text",
+        r"C:\new\table",
+        "line one\nline two",
+        "it has ''' inside",
+    ],
+)
+def test_string_pipeline_parameter_reaches_step_unchanged(tmp_path, monkeypatch, value):
+    """A str pipeline parameter must reach the step's kernel as the same str.
+
+    The value arrives at run time as a component argument and is written
+    into the code that the step runs, so quotes, backslashes and newlines in
+    it must not change it or break that code.
+    """
+    import importlib.util
+    import textwrap
+
+    import nbformat
+
+    from kale import NotebookProcessor
+    from kale.common import jputils
+
+    nb = nbformat.v4.new_notebook()
+    nb.metadata["kubeflow_notebook"] = {"experiment_name": "test", "pipeline_name": "test"}
+    nb.cells = [
+        nbformat.v4.new_code_cell('prompt = "hello"', metadata={"tags": ["pipeline-parameters"]}),
+        nbformat.v4.new_code_cell("print(prompt)", metadata={"tags": ["step:show"]}),
+    ]
+    nb_path = tmp_path / "params.ipynb"
+    nbformat.write(nb, str(nb_path))
+
+    pipeline = NotebookProcessor(str(nb_path), {"abs_working_dir": str(tmp_path)}).run()
+    monkeypatch.chdir(tmp_path)
+    dsl_path = Compiler(pipeline, "").compile()
+    spec = importlib.util.spec_from_file_location("generated_dsl", dsl_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    blocks = []
+    monkeypatch.setattr(jputils, "run_code", lambda b: blocks.extend(b) or "")
+    report = SimpleNamespace(path=str(tmp_path / "report.html"))
+    module.show_step.python_func(show_html_report=report, prompt=value)
+
+    namespace = {}
+    exec(textwrap.dedent(blocks[0]), namespace)
+    assert namespace["prompt"] == value

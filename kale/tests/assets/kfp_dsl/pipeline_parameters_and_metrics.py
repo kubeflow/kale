@@ -15,7 +15,7 @@ def create_matrix_step(create_matrix_html_report: Output[HTML], kale_metrics_art
         d1 = {d1}
         d2 = {d2}
         booltest = {booltest}
-        strtest = '{strtest}'
+        strtest = {strtest!r}
     '''
 
     _kale_data_loading_block = '''
@@ -90,7 +90,7 @@ def sum_matrix_step(sum_matrix_html_report: Output[HTML], kale_metrics_artifact:
         d1 = {d1}
         d2 = {d2}
         booltest = {booltest}
-        strtest = '{strtest}'
+        strtest = {strtest!r}
     '''
     # Saves the received artifacts to be retrieved during the nb execution
     from kale import marshal as _kale_marshal
