@@ -481,3 +481,30 @@ def result():
     assert sorted(pipeline.get_step("step_m").outs) == ["bar", "foo", "result", "x", "y"]
     assert sorted(pipeline.get_step("step_f").ins) == ["bar", "foo", "result", "x", "y"]
     assert sorted(pipeline.get_step("step_f").outs) == []
+
+
+@pytest.mark.parametrize(
+    "middle_source",
+    [
+        "squares = [i * i for i in range(3)]",
+        "total = sum(i for i in range(3))",
+        "double = lambda i: i * 2",
+        "i: int",
+    ],
+)
+def test_dependencies_detection_local_scope_does_not_shadow(
+    notebook_processor, dummy_nb_config, middle_source
+):
+    """A name that is only local in step2 is still provided by step1."""
+    pipeline = Pipeline(dummy_nb_config)
+    pipeline.add_step(Step(name="step1", source=["i = 5"]))
+    pipeline.add_step(Step(name="step2", source=[middle_source]))
+    pipeline.add_step(Step(name="step3", source=["print(i)"]))
+    pipeline.add_edge("step1", "step2")
+    pipeline.add_edge("step2", "step3")
+
+    notebook_processor.pipeline = pipeline
+    notebook_processor.dependencies_detection()
+    assert pipeline.get_step("step1").outs == ["i"]
+    assert "i" not in pipeline.get_step("step2").outs
+    assert pipeline.get_step("step3").ins == ["i"]

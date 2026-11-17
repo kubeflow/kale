@@ -82,6 +82,20 @@ def fun()
         # async functions are treated like regular functions: the function
         # name is a candidate, their local variables must not leak out.
         (_async_snippet, ["_test", "_test2"]),
+        # comprehension targets and lambda parameters are local to them
+        ("squares = [i * i for i in items]", ["squares", "items"]),
+        ("s = {i for i in items if i > n}", ["s", "items", "n"]),
+        ("d = {k: v for k, v in pairs}", ["d", "pairs"]),
+        ("total = sum(i for i in range(n))", ["total", "sum", "range", "n"]),
+        ("m = [[j for j in row] for row in grid]", ["m", "grid"]),
+        ("f = lambda i, *args, k=default: i + k + x", ["f", "default", "x"]),
+        # a walrus target binds in the enclosing scope
+        ("ys = [(y := f(i)) for i in items]", ["ys", "y", "f", "items"]),
+        # a bare annotation binds nothing
+        ("i: int", ["int"]),
+        ("i: int = 3", ["i", "int"]),
+        ("for i in items:\n    pass", ["i", "items"]),
+        ("a, *b = values", ["a", "b", "values"]),
     ],
 )
 def test_get_marshal_candidates(code, target):
