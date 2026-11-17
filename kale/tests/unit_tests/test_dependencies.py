@@ -481,3 +481,36 @@ def result():
     assert sorted(pipeline.get_step("step_m").outs) == ["bar", "foo", "result", "x", "y"]
     assert sorted(pipeline.get_step("step_f").ins) == ["bar", "foo", "result", "x", "y"]
     assert sorted(pipeline.get_step("step_f").outs) == []
+
+
+@pytest.mark.parametrize("reassignment", ["n = n + 1", "n = 10", "n += 1", "n: int = 10"])
+def test_dependencies_detection_reassigned_pipeline_parameter(
+    notebook_processor, dummy_nb_config, reassignment
+):
+    """A parameter reassigned by an ancestor reaches later steps as its data."""
+    pipeline = Pipeline(dummy_nb_config)
+    pipeline.pipeline_parameters = {"n": (3, "int"), "m": (1, "int")}
+    pipeline.add_step(Step(name="step1", source=[reassignment]))
+    pipeline.add_step(Step(name="step2", source=["print(n, m)"]))
+    pipeline.add_edge("step1", "step2")
+
+    notebook_processor.pipeline = pipeline
+    notebook_processor.dependencies_detection()
+    assert pipeline.get_step("step1").outs == ["n"]
+    assert pipeline.get_step("step2").ins == ["n"]
+    assert pipeline.get_step("step2").parameters == {"m": (1, "int")}
+
+
+def test_dependencies_detection_pipeline_parameter_only_read(notebook_processor, dummy_nb_config):
+    """A parameter that ancestors only read stays a parameter."""
+    pipeline = Pipeline(dummy_nb_config)
+    pipeline.pipeline_parameters = {"n": (3, "int")}
+    pipeline.add_step(Step(name="step1", source=["x = n * 2"]))
+    pipeline.add_step(Step(name="step2", source=["print(n, x)"]))
+    pipeline.add_edge("step1", "step2")
+
+    notebook_processor.pipeline = pipeline
+    notebook_processor.dependencies_detection()
+    assert pipeline.get_step("step1").parameters == {"n": (3, "int")}
+    assert pipeline.get_step("step2").parameters == {"n": (3, "int")}
+    assert pipeline.get_step("step2").ins == ["x"]

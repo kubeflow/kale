@@ -319,3 +319,25 @@ def test_parse_assignments_expressions_exc_none():
 )
 def test_get_trailing_variable(code, target):
     assert kale_ast.get_trailing_variable(code) == target
+
+
+@pytest.mark.parametrize(
+    "code,target",
+    [
+        ("", set()),
+        ("x = y + 1", {"x"}),
+        ("x += 1", {"x"}),
+        ("x: int = 1\ny: int", {"x"}),
+        ("a, (b, *c) = v", {"a", "b", "c"}),
+        ("for i in r:\n    j = i", {"i", "j"}),
+        ("with open(p) as f:\n    pass", {"f"}),
+        ("import os.path\nfrom m import n as k", {"os.path", "k"}),
+        ("def f():\n    inner = 1\nclass C:\n    attr = 1", {"f", "C"}),
+        ("s = [i for i in r]\ng = lambda u: u", {"s", "g"}),
+        ("ys = [(y := i) for i in r]", {"ys", "y"}),
+        ("print(x)\nx.attr = 1\nd[k] = 2", set()),
+    ],
+)
+def test_get_assigned_names(code, target):
+    """Tests get_assigned_names function."""
+    assert kale_ast.get_assigned_names(code) == target
