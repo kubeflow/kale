@@ -224,7 +224,14 @@ class NotebookProcessor:
         # Initialize config and pipeline (previously in BaseProcessor)
         self.config = config
         if not config and not skip_validation:
-            self.config = NotebookConfig(**{**kwargs, **nb_metadata})
+            # kwargs are fallbacks that sit below the notebook's metadata. The
+            # labextension saves unset fields as empty strings, so an empty or
+            # missing value must not shadow a fallback: otherwise a notebook
+            # saved with `"experiment_name": ""` ends up with no name at all.
+            fallbacks = {
+                key: value for key, value in kwargs.items() if nb_metadata.get(key) in ("", None)
+            }
+            self.config = NotebookConfig(**{**kwargs, **nb_metadata, **fallbacks})
         self.pipeline = Pipeline(self.config) if self.config else None
 
     def _read_notebook(self):
