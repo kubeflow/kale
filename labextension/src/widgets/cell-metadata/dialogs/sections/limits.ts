@@ -29,6 +29,17 @@ export const limitAction = (
   limitValue: ILimitAction['limitValue'] = undefined,
 ): ILimitAction => ({ action, limitKey, limitValue });
 
+export const GPU_TYPES = [
+  { value: 'nvidia.com/gpu', label: 'Nvidia' },
+  { value: 'amd.com/gpu', label: 'AMD' },
+];
+
+/** The GPU type requested in `limits`, if any. Assumes there is at most one. */
+export const getGpuType = (limits: {
+  [id: string]: string;
+}): string | undefined =>
+  Object.keys(limits).find(key => GPU_TYPES.some(t => t.value === key));
+
 // Scoped to the limit sections: the shared Input/Select components don't have
 // a dark-mode-aware disabled style, so override it here rather than in the
 // shared components (which are used well beyond this dialog).

@@ -24,7 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { CellMetadataContext } from '../../lib/CellMetadataContext';
 import { ISecretRef } from '../../lib/TagsUtils';
 import { getRuntimeImageName, RuntimeImages } from '../../lib/runtimeImages';
-import { getGpuType } from './dialogs/sections/GpuSection';
+import { getGpuType } from './dialogs/sections/limits';
 
 interface IProps {
   stepName: string;

@@ -451,7 +451,7 @@ test.describe('Step CPU limit', () => {
     await editor.getByRole('button', { name: 'Configure step' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Configure Step' });
-    await dialog.getByRole('tab', { name: 'CPU' }).click();
+    await dialog.getByRole('tab', { name: 'Limits' }).click();
     const cpuSwitch = dialog.locator('input[name="enableCpuLimit"]');
     const cpuInput = dialog.getByLabel('CPU Limit (e.g., 500m)');
 
@@ -485,7 +485,7 @@ test.describe('Step memory limit', () => {
     await editor.getByRole('button', { name: 'Configure step' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Configure Step' });
-    await dialog.getByRole('tab', { name: 'Memory' }).click();
+    await dialog.getByRole('tab', { name: 'Limits' }).click();
     const memorySwitch = dialog.locator('input[name="enableMemoryLimit"]');
     const memoryInput = dialog.getByLabel('Memory Limit (e.g., 2Gi)');
 
