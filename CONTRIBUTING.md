@@ -288,6 +288,12 @@ Open the project in VS Code - debug configurations are provided in `.vscode/laun
 - Debug All Unit Tests
 - Debug Kale CLI
 - Debug JupyterLab
+- Debug Frontend Tests (Jest)
+- Debug Frontend (Chrome)
+
+To use "Debug Frontend (Chrome)", start JupyterLab first (`make jupyter`), then launch the config and log in with the token.
+
+When debugging frontend changes, also run `make watch-labextension` in a separate terminal so the extension is rebuilt automatically as you edit.
 
 
 ## Development Checklist
