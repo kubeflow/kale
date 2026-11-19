@@ -12,20 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import json
 import logging
 import os
-from queue import Empty
 import re
-import signal
 import sys
-import threading
-import time
 
 import ipykernel
 from jupyter_client.kernelspec import get_kernel_spec
 from jupyter_server import serverapp
-from nbconvert.preprocessors.execute import ExecutePreprocessor
+from nbconvert.preprocessors.execute import CellExecutionError, ExecutePreprocessor
 import nbformat
 from packaging import version as pkg_version
 import requests
@@ -101,12 +98,6 @@ JAVASCRIPT_HTML_TEMPLATE = """
 {}
 </script>
 """
-
-
-class KaleKernelException(Exception):
-    """Raised when signal_handler receives a signal from capture_streams."""
-
-    pass
 
 
 class KaleGracefulExit(Exception):
@@ -185,51 +176,17 @@ def process_outputs(cells):
     return html_artifact
 
 
-async def capture_streams(kc, exit_on_error=False):
-    """Capture stream and error outputs from a kernel connection.
+class StreamingExecutePreprocessor(ExecutePreprocessor):
+    """ExecutePreprocessor that echoes the kernel's stdout/stderr live."""
 
-    Get messages from the iopub channel of the `kc` kernel connection
-    and write to stdout or stderr any message of type `stream`.
-    Capture and exit when receiving an `error` message or when the message
-    queue is done.
-
-    Args:
-        kc: kernel connection
-        exit_on_error (bool): True to call sys.exit() when the kernel sends
-            an error message.
-    """
-    while True:
-        try:
-            msg = await kc.iopub_channel.get_msg()
-        except Empty:
-            print("The Kale kernel stream watcher thread raised an Empty exception, exiting...")
-            return
-
-        msg_type = msg["header"]["msg_type"]
-        content = msg["content"]
-        if msg_type == "stream":  # stdout or stderr
-            if content["name"] == "stdout":
-                sys.stdout.write(content["text"])
-            elif content["name"] == "stderr":
-                sys.stderr.write(content["text"])
-            else:
-                raise NotImplementedError(
-                    "stream message content name not recognized: {}".format(content["name"])
-                )
-        if msg_type == "error":  # error and exceptions
-            # traceback is a list of strings (jupyter protocol spec)
-            if content["ename"] == KaleGracefulExit.__name__:
-                log.error(f"Received a {KaleGracefulExit.__name__} exception. Exiting...")
-                os.kill(os.getpid(), signal.SIGUSR1)
-            else:
-                traceback = map(remove_ansi_color_sequences, content["traceback"])
-                sys.stderr.write("\n".join(traceback) + "\n")
-                if exit_on_error:
-                    # when receiving an error from the kernel, we don't want
-                    # to just print the exception to stderr, otherwise the
-                    # pipeline step would complete successfully.
-                    # kill sends the signal to the specific pid (main thread)
-                    os.kill(os.getpid(), signal.SIGUSR1)
+    def output(self, outs, msg, display_id, cell_index):
+        """Echo stream messages, then store the output as usual."""
+        if msg["msg_type"] == "stream":
+            content = msg["content"]
+            stream = sys.stderr if content["name"] == "stderr" else sys.stdout
+            stream.write(content["text"])
+            stream.flush()
+        return super().output(outs, msg, display_id, cell_index)
 
 
 def run_code(source: tuple, kernel_name="python3"):
@@ -262,59 +219,23 @@ def run_code(source: tuple, kernel_name="python3"):
     )
     notebook.cells = [nbformat.v4.new_code_cell(s) for s in source]
     # these parameters are passed to nbconvert.ExecutePreprocessor
-    jupyter_execute_kwargs = {"timeout": -1, "allow_errors": True, "store_widget_state": True}
+    jupyter_execute_kwargs = {
+        "timeout": -1,
+        "allow_errors": False,
+        "store_widget_state": True,
+        "kernel_name": kernel_name,
+    }
 
     resources = {}
     # cwd: If supplied, the kernel will run in this directory
     # resources['metadata'] = {'path': cwd}
-    ep = ExecutePreprocessor(**jupyter_execute_kwargs)
-    km = ep.kernel_manager_class(kernel_name=kernel_name, config=ep.config)
-    # start_kernel supports several additional arguments via **kw
-    km.start_kernel(extra_arguments=ep.extra_arguments)
-    kc = km.client()
-    kc.start_channels()
-    try:
-        kc.wait_for_ready(timeout=60)
-    except RuntimeError:
-        kc.stop_channels()
-        raise
-    kc.allow_stdin = False
+    ep = StreamingExecutePreprocessor(**jupyter_execute_kwargs)
 
-    def signal_handler(_signal, _frame):
-        raise KaleKernelException()
-
-    # this signal is used by the thread in case an error message is received
-    # by the kernel. Running sys.exit() inside the thread would terminate
-    # just the thread itself, not the main process. Calling os._exit() can be
-    # dangerous as the process is killed instantly (files and connections are
-    # not closed, for example). With a signal we can capture the ExitCommand
-    # exception from the main process and exit gracefully.
-    signal.signal(signal.SIGUSR1, signal_handler)
-    # start separate thread in to capture and print stdout, stderr, errors.
-    # daemon mode will make the watcher thread die when the main one returns.
-    x = threading.Thread(
-        target=capture_streams,
-        args=(
-            kc,
-            True,
-        ),
-        daemon=True,
-    )
-    x.start()
-
-    try:
-        # start preprocessor: run each code cell and capture the output
-        ep.preprocess(notebook, resources, km=km)
-    except KaleKernelException:
-        log.newline(lines=3)
-        log.error("%s Failed to run user code %s", "-" * 10, "-" * 10)
-        sys.stdout.flush()
-        # exit gracefully with error
-        sys.exit(-1)
-    # Give some time to the stream watcher thread to receive all messages from
-    # the kernel before shutting down.
-    time.sleep(1)
-    km.shutdown_kernel()
+    # Start preprocessor: run each code cell and capture the output.
+    # The preprocessor owns the kernel, so it shuts it down when done,
+    # even if a cell fails. A failing cell's error is recorded in its outputs.
+    with contextlib.suppress(CellExecutionError):
+        ep.preprocess(notebook, resources)
 
     has_errors = False
     for cell in notebook.cells:

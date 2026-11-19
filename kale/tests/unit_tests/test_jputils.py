@@ -55,3 +55,33 @@ def test_run_code():
     # test magic command
     code = ("%%time\nprint('Some dull code')",)
     ju.run_code(code)
+
+
+def test_run_code_captures_stdout_and_stderr(capsys):
+    """Test that stdout and stderr from executed code reach the caller."""
+    code = (
+        "print('stdout-marker')",
+        "import sys\nprint('stderr-marker', file=sys.stderr)",
+    )
+
+    ju.run_code(code)
+
+    captured = capsys.readouterr()
+    assert "stdout-marker" in captured.out
+    assert "stderr-marker" in captured.err
+
+
+def test_run_code_stops_after_first_error(tmp_path):
+    """Test that execution stops when a code cell raises an exception."""
+    marker = tmp_path / "ran_after_error"
+
+    code = (
+        "raise ValueError('boom')",
+        f"open({str(marker)!r}, 'w').close()",
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ju.run_code(code)
+
+    assert exc_info.value.code == -1
+    assert not marker.exists()
