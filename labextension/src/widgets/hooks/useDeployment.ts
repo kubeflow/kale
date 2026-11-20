@@ -19,7 +19,7 @@ import { IDocumentManager } from '@jupyterlab/docmanager';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { DeployProgressState } from '../deploys-progress/DeployProgress';
 import {
-  DefaultState,
+  createDefaultMetadata,
   DeployType,
   IKaleNotebookMetadata,
 } from '../LeftPanelTypes';
@@ -70,7 +70,7 @@ export function useDeployment({
   const runDeploymentRef = useRef(false);
   runDeploymentRef.current = runDeployment;
 
-  const metadataRef = useRef<IKaleNotebookMetadata>(DefaultState.metadata);
+  const metadataRef = useRef<IKaleNotebookMetadata>(createDefaultMetadata());
   const namespaceRef = useRef('');
   const deployDebugMessageRef = useRef(false);
   const deploymentTypeRef = useRef<DeployType>('compile');
