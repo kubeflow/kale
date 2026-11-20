@@ -1128,10 +1128,21 @@ class NotebookProcessor:
         for step in self.pipeline.steps:
             # detect the INS dependencies of the CURRENT node------------------
             step_source = "\n".join(step.source)
+            # A parameter an ancestor reassigns is data from that ancestor, as
+            # in the notebook, not the submitted parameter value.
+            reassigned = set()
+            for anc in graphutils.get_ordered_ancestors(self.pipeline, step.name):
+                anc_source = "\n".join(self.pipeline.get_step(anc).source)
+                reassigned |= astutils.get_assigned_names(anc_source)
+            pipeline_parameters = {
+                name: value
+                for name, value in (self.pipeline.pipeline_parameters or {}).items()
+                if name not in reassigned
+            }
             # get the variables that this step is missing and the pipeline
             # parameters that it actually needs.
             ins, parameters = self._detect_in_dependencies(
-                source_code=step_source, pipeline_parameters=self.pipeline.pipeline_parameters
+                source_code=step_source, pipeline_parameters=pipeline_parameters
             )
             step.parameters = parameters
 
