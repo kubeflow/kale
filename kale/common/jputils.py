@@ -71,10 +71,22 @@ HTML_TEMPLATE = """
 
 IMAGE_HTML_TEMPLATE = """
 <div>
-  <p>{}</p>
-  <img src="data:image/png;base64, {}" />
+  <p>{title}</p>
+  <img src="data:{mime_type};base64, {data}" />
 </div>
 """
+
+SVG_HTML_TEMPLATE = """
+<div>
+  <p>{title}</p>
+  {svg}
+</div>
+"""
+
+# Base64-encoded image MIME types that can be embedded with a data URI,
+# in order of preference.
+BASE64_IMAGE_MIME_TYPES = ("image/png", "image/jpeg")
+SVG_MIME_TYPE = "image/svg+xml"
 
 TEXT_HTML_TEMPLATE = """
 <div style="margin:10px 0;">
@@ -158,15 +170,20 @@ def generate_html_output(outputs):
             # image / jpeg
             # image / svg + xml
             data = o["data"]
-            # TODO: Generalize to multiple image types (i.e. jpeg and svg+xml)
-            if "image/png" in data:
-                title = data.get("text/plain", "")
-                html += IMAGE_HTML_TEMPLATE.format(title, data["image/png"])
+            title = data.get("text/plain", "")
+            image_mime = next((m for m in BASE64_IMAGE_MIME_TYPES if m in data), None)
+            has_image = image_mime is not None or SVG_MIME_TYPE in data
+            if image_mime:
+                html += IMAGE_HTML_TEMPLATE.format(
+                    title=title, mime_type=image_mime, data=data[image_mime]
+                )
+            elif SVG_MIME_TYPE in data:
+                html += SVG_HTML_TEMPLATE.format(title=title, svg=data[SVG_MIME_TYPE])
 
             if "text/html" in data:
                 html += data["text/html"]
 
-            if "image/png" not in data and "text/html" not in data and "text/plain" in data:
+            if not has_image and "text/html" not in data and "text/plain" in data:
                 html += TEXT_HTML_TEMPLATE.format(data["text/plain"])
 
             if "application/javascript" in data:

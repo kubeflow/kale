@@ -28,7 +28,25 @@ def _output_display(data):
     [
         ([], ""),
         # ---
-        (_output_display({"image/png": "bytes"}), ju.IMAGE_HTML_TEMPLATE.format("", "bytes")),
+        (
+            _output_display({"image/png": "bytes"}),
+            ju.IMAGE_HTML_TEMPLATE.format(title="", mime_type="image/png", data="bytes"),
+        ),
+        # ---
+        (
+            _output_display({"image/jpeg": "bytes", "text/plain": "<Figure>"}),
+            ju.IMAGE_HTML_TEMPLATE.format(title="<Figure>", mime_type="image/jpeg", data="bytes"),
+        ),
+        # ---
+        (
+            _output_display({"image/svg+xml": "<svg></svg>", "text/plain": "<Figure>"}),
+            ju.SVG_HTML_TEMPLATE.format(title="<Figure>", svg="<svg></svg>"),
+        ),
+        # --- png is preferred when several image types are available
+        (
+            _output_display({"image/png": "png", "image/jpeg": "jpeg", "image/svg+xml": "svg"}),
+            ju.IMAGE_HTML_TEMPLATE.format(title="", mime_type="image/png", data="png"),
+        ),
         # ---
         (_output_display({"text/html": "bytes"}), "bytes"),
         # ---
