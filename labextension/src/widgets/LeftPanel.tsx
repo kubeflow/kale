@@ -48,6 +48,7 @@ import {
   NEW_EXPERIMENT,
   PIPELINE_NAME_MAX_LENGTH,
   IVolumeConfig,
+  isValidExperimentName,
 } from './LeftPanelTypes';
 export type { DeployType, IExperiment, IKaleNotebookMetadata, IVolumeConfig };
 export { DefaultState, NEW_EXPERIMENT };
@@ -166,15 +167,26 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     } else {
       experimentInputValue = selectedExperiments[0].name;
     }
+  } else if (
+    notebookMeta.metadata.experiment.name !== '' ||
+    notebookMeta.metadata.experiment_name !== ''
+  ) {
+    // No experiment list is available (e.g. KFP disconnected or still loading),
+    // but the notebook has a saved experiment. Show it from the notebook
+    // metadata so the field is populated regardless of KFP state (#965).
+    experimentInputSelected = NEW_EXPERIMENT.id;
+    experimentInputValue =
+      notebookMeta.metadata.experiment.name !== ''
+        ? notebookMeta.metadata.experiment.name
+        : notebookMeta.metadata.experiment_name;
   }
   const pipelineNameValid =
     /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(
       notebookMeta.metadata.pipeline_name,
     ) && notebookMeta.metadata.pipeline_name.length <= PIPELINE_NAME_MAX_LENGTH;
-  const experimentNameRegex = /^[a-z]([-a-z0-9]*[a-z0-9])?$/;
   const experimentNameValid =
     experimentInputSelected !== NEW_EXPERIMENT.id ||
-    experimentNameRegex.test(experimentInputValue);
+    isValidExperimentName(experimentInputValue);
 
   const experiment_name_input = (
     <ExperimentInput

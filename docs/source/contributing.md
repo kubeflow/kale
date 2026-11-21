@@ -55,6 +55,20 @@ You only need to re-run `make dev` after pulling changes that touch
 | `make docs-serve`      | Build and serve docs locally on port 8000.       |
 
 Run `make help` in the repository root for the full list.
+## Local KFP development
+
+To test a notebook against a local Kubeflow Pipelines (KFP) cluster, use:
+
+```bash
+make kfp-dev NB=examples/base/candies_sharing.ipynb
+```
+
+This target builds the local Kale wheel, ensures the KFP development environment is running, starts the wheel server, and submits the notebook to KFP. It stops the managed wheel server before rebuilding the wheel directory so an existing server cannot keep serving a deleted directory.
+
+The default wheel-server port is `8765`; the KFP UI is forwarded to port `8080`. You can override these with `KFP_PORT` and `KFP_LOCAL_PORT`.
+
+For manual control, use `make kfp-build`, `make kfp-serve`, `make kfp-compile NB=...`, and `make kfp-run NB=... KFP_HOST=...` separately. The local wheel index host can be configured with `KFP_HOST_ADDR`; its default is `host.k3d.internal` on Linux and `host.docker.internal` on other operating systems.
+
 
 ## Managing Python dependencies
 

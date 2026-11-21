@@ -101,8 +101,6 @@ export default class CellUtilities {
    * @param index: The cell index to read metadata from
    * @param key The key of the value to create.
    * @param value The value to set.
-   * @param save Default is false. Whether the notebook should be saved after the meta data is set.
-   * Note: This function will not wait for the save to complete, it only sends a save request.
    * @returns any - The old value for the key, or undefined if it did not exist.
    */
   // here there has to be any type -
@@ -131,6 +129,24 @@ export default class CellUtilities {
       return Promise.resolve(oldVal);
     } catch (error) {
       return Promise.reject(error);
+    }
+  }
+
+  /**
+   * @description Removes a key from a cell's metadata. Does nothing if the
+   * notebook, the cell or the key is not there.
+   * @param notebookPanel The notebook holding the cell.
+   * @param index The cell index to remove the metadata from.
+   * @param key The key to remove.
+   */
+  public static deleteCellMetaData(
+    notebookPanel: NotebookPanel,
+    index: number,
+    key: string,
+  ): void {
+    const cells = notebookPanel?.model?.cells;
+    if (cells && index >= 0 && index < cells.length) {
+      cells.get(index).deleteMetadata(key);
     }
   }
 
