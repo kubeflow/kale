@@ -92,10 +92,8 @@ def get_marshal_candidates(code):
         - ast.ImportFrom
         - ast.Tuple
 
-    Ast nodes that create local contexts must be excluded from the search, as
-    they can crete local variables that alias global ones. These nodes include
-    ast.FunctionDef, ast.ClassDef, context manager names and list and dict
-    comprehensions variables.
+    Names local to functions, classes, comprehensions and lambdas are
+    excluded, as they can alias global ones that an ancestor provides.
 
     Args:
         code (str): multiple string representing Python code
@@ -116,40 +114,71 @@ def get_marshal_candidates(code):
     # Note #3: Magic commands are preserved in the resulting Python executable,
     #  they are commented just here in order to make AST run.
     commented_code = utils.comment_magic_commands(code)
-    # need to exclude all the nodes that mights *define* variables in a local
-    # scope. For example, a function may define a variable x that is aliasing
-    # a global variable x, and we don't want to marshal it in that step, but
-    # from the step that defines the global x.
-    # TODO: Search for all possible python nodes that define local vars.
-    #  List comprehensions ([i for i in list])
-    #  Dict comprehensions
-    #  Exception handling?
-    #  Decorators?
-    #  Context manager (just the alias)
-    contexts = (
-        ast.FunctionDef,
-        ast.AsyncFunctionDef,
-        ast.ClassDef,
-    )
     tree = ast.parse(commented_code)
     for block in tree.body:
-        for node in walk(block, stop_at=contexts):
-            if isinstance(node, contexts):
-                names.add(node.name)
-            if isinstance(node, ast.Name):
-                names.add(node.id)
-            if isinstance(
-                node,
-                ast.Import | ast.ImportFrom,
-            ):
-                for _n in node.names:
-                    if _n.asname is None:
-                        names.add(_n.name)
-                    else:
-                        names.add(_n.asname)
-            if isinstance(node, ast.Tuple | ast.List):
-                names.update(get_list_tuple_names(node))
+        _collect_global_names(block, frozenset(), names)
     return names
+
+
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def _target_names(node):
+    """Names bound by an assignment target such as ``a`` or ``(a, *b)``."""
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+
+
+def _collect_global_names(node, hidden, names, in_lambda=False):
+    """Add to ``names`` the names ``node`` uses or binds in the global scope.
+
+    Functions and classes contribute only their own name: their bodies are
+    local scopes. Comprehension targets and lambda parameters are local too,
+    so they are ``hidden`` inside those nodes and do not shadow a global of
+    the same name that an ancestor step provides. A walrus target binds in the
+    enclosing scope, so it counts unless it is inside a lambda.
+    """
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        names.add(node.name)
+        return
+    if isinstance(node, ast.Import | ast.ImportFrom):
+        names.update(alias.asname or alias.name for alias in node.names)
+        return
+    if isinstance(node, ast.Name):
+        if node.id not in hidden:
+            names.add(node.id)
+        return
+    if isinstance(node, ast.NamedExpr):
+        if not in_lambda:
+            names.add(node.target.id)
+        _collect_global_names(node.value, hidden, names, in_lambda)
+        return
+    if isinstance(node, ast.AnnAssign) and node.value is None:
+        # A bare annotation binds nothing, so only the annotation is read
+        _collect_global_names(node.annotation, hidden, names, in_lambda)
+        return
+    if isinstance(node, ast.Lambda):
+        args = node.args
+        for default in args.defaults + [d for d in args.kw_defaults if d]:
+            _collect_global_names(default, hidden, names, in_lambda)
+        params = args.posonlyargs + args.args + args.kwonlyargs
+        params += [a for a in (args.vararg, args.kwarg) if a]
+        local = hidden | {param.arg for param in params}
+        _collect_global_names(node.body, local, names, in_lambda=True)
+        return
+    if isinstance(node, _COMPREHENSIONS):
+        local = set(hidden)
+        for index, generator in enumerate(node.generators):
+            # The first iterable is evaluated in the enclosing scope
+            _collect_global_names(generator.iter, hidden if index == 0 else local, names, in_lambda)
+            local |= _target_names(generator.target)
+            for condition in generator.ifs:
+                _collect_global_names(condition, local, names, in_lambda)
+        elements = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
+        for element in elements:
+            _collect_global_names(element, local, names, in_lambda)
+        return
+    for child in ast.iter_child_nodes(node):
+        _collect_global_names(child, hidden, names, in_lambda)
 
 
 def parse_functions(code):
