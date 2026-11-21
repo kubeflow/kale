@@ -8,7 +8,7 @@ def {{ step.name }}_step({{ component_signature_args }}):
     _kale_pipeline_parameters_block = f'''
 {%- for param_name, param_var in pipeline_params.items() %}
     {%- for key in param_var.keys() %}
-        {{ param_name }} = {% if param_var[key] is string %}'{ {{key}} }'{% else %}{ {{key}} }{% endif %}
+        {{ param_name }} = {% if param_var[key] is string %}{ {{key}}!r}{% else %}{ {{key}} }{% endif %}
     {%- endfor %}
 {%- endfor %}
     '''
