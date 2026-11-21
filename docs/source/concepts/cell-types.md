@@ -17,6 +17,7 @@ editing the notebook JSON directly.
 | `pipeline-metrics`          | -              | `print()` statements in the cell are converted to KFP pipeline metrics. |
 | `step:<name>`               | `step:train_model`              | Declares (or appends to) a pipeline step named `<name>`.               |
 | `prev:<step_name>`          | `prev:load_data`                | Adds a dependency from the current step to `<step_name>`.              |
+| `notebook:<name>`           | `notebook:preprocessing`        | References another notebook, compiled into this pipeline as a nested sub-pipeline. The path lives in the cell's `notebook_path` metadata. |
 | `skip`                      | -                          | Cell is excluded from the pipeline entirely.                           |
 | `annotation:<key>:<value>`  | `annotation:team:ml`            | Adds a Kubernetes annotation to the step's pod.                        |
 | `label:<key>:<value>`       | `label:env:prod`                | Adds a Kubernetes label to the step's pod.                             |
@@ -119,6 +120,37 @@ model.fit(df.drop("y", axis=1), df["y"])
 
 You can add as many `prev:` tags as you want — one per dependency.
 
+### `notebook:<name>`
+
+References another notebook. The referenced notebook is compiled into the same
+pipeline as a nested sub-pipeline, with each of its own cells still visible as
+a step.
+
+Unlike every other tag, the value here does not carry the information Kale
+needs: the tag names the reference, and the **path lives in the cell's
+`notebook_path` metadata**, resolved relative to the notebook containing the
+cell.
+
+```json
+{
+  "metadata": {
+    "tags": ["notebook:preprocessing"],
+    "notebook_path": "./preprocessing.ipynb"
+  }
+}
+```
+
+The cell itself holds no code. Kale infers the ordering between referenced
+notebooks from the variables they share, exactly as it does between cells, so
+no `prev:` tag is involved.
+
+The `Notebook` cell type is hidden in the JupyterLab panel unless the **Enable
+composable notebooks** setting is on. That setting only controls the editor;
+a notebook that already contains a `notebook:` cell compiles either way.
+
+See [Composing Multiple Notebooks](composition.md) for the full picture,
+including the current limitations.
+
 ### Per-step configuration
 
 A step cell can carry additional tags to customize its pod spec:
@@ -127,6 +159,7 @@ A step cell can carry additional tags to customize its pod spec:
 # tags: step:train_gpu, prev:prepare_data,
 #       image:pytorch/pytorch:2.0-cuda12,
 #       limit:nvidia.com/gpu:1,
+#       limit:memory:4Gi,
 #       annotation:team:ml,
 #       label:env:prod,
 #       cache:disabled,
@@ -134,8 +167,26 @@ A step cell can carry additional tags to customize its pod spec:
 ```
 
 - **`image:<image>`** — use a custom base image for just this step.
-- **`limit:<resource>:<value>`** — request GPU, memory, or any other
-  resource (e.g. `limit:memory:8Gi`).
+- **`limit:<resource>:<value>`** — set a resource limit for the step.
+  Supported resources are GPUs (`limit:nvidia.com/gpu:1`,
+  `limit:amd.com/gpu:1`) and memory (`limit:memory:8Gi`). You can also set
+  them in the **GPU** and **Memory** tabs of the step's Configure Step dialog.
+  Other resources, such as `cpu`, are not applied yet.
+
+#### Memory limit values
+
+A memory limit is a whole number with an optional unit, the format KFP
+accepts:
+
+| Unit | Meaning | Example |
+|------|---------|---------|
+| none | bytes | `1073741824` |
+| `Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei` | powers of 1024 | `512Mi`, `2Gi` |
+| `K`, `M`, `G`, `T`, `P`, `E` | powers of 1000 | `500M`, `1G` |
+
+Decimals, spaces and lowercase units are not accepted: write `1536Mi`
+instead of `1.5Gi`, and `2Gi` instead of `2 Gi` or `2gi`. The Memory tab only
+saves values in this format.
 - **`annotation:<k>:<v>`** / **`label:<k>:<v>`** — add Kubernetes metadata
   to the step's pod. Useful for cost allocation, scheduling hints, or
   integration with observability tooling.

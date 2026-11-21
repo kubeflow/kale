@@ -16,6 +16,14 @@ export type DeployType = 'compile' | 'run' | 'upload';
 
 export const PIPELINE_NAME_MAX_LENGTH = 124;
 
+// KFP stores an experiment's name in a varchar(128) column and only requires
+// it to be non-empty, so uppercase letters, spaces etc. are all valid.
+export const EXPERIMENT_NAME_MAX_LENGTH = 128;
+
+/** Whether `name` can be used for a new KFP experiment. */
+export const isValidExperimentName = (name: string): boolean =>
+  name.trim() !== '' && name.length <= EXPERIMENT_NAME_MAX_LENGTH;
+
 export interface IExperiment {
   id: string;
   name: string;
