@@ -15,7 +15,7 @@
 import * as React from 'react';
 import { useCallback, useContext, useRef, useState } from 'react';
 import { NotebookPanel } from '@jupyterlab/notebook';
-import TagsUtils from '../../lib/TagsUtils';
+import TagsUtils, { ISecretRef } from '../../lib/TagsUtils';
 import CloseIcon from '@mui/icons-material/Close';
 import LayersClearIcon from '@mui/icons-material/LayersClear';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -30,8 +30,10 @@ import { useUpdateCellTags } from './hooks/useCellTags';
 import { useEditorPosition } from './hooks/useEditorPosition';
 import {
   CELL_TYPES,
+  NOTEBOOK_PATH_ERROR_MSG,
   RESERVED_CELL_NAMES,
   STEP_NAME_ERROR_MSG,
+  STEP_NAME_PATTERN,
 } from './constants';
 
 export {
@@ -45,13 +47,16 @@ export interface ICellEditorData {
   stepName?: string;
   stepDependencies: string[];
   limits?: { [id: string]: string };
+  secrets?: { [envName: string]: ISecretRef };
   baseImage?: string;
   enableCaching?: boolean;
+  notebookPath?: string;
   generateHtmlReport?: boolean;
 }
 
 export interface IProps extends ICellEditorData {
   resolvedDefaultBaseImage: string;
+  runtimeImages: Record<string, string>;
 }
 
 export const CellMetadataEditor: React.FC<IProps> = props => {
@@ -60,14 +65,27 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
     stepName = '',
     stepDependencies,
     limits = {},
+    secrets = {},
     baseImage,
     enableCaching,
+    notebookPath,
     generateHtmlReport,
     resolvedDefaultBaseImage,
+    runtimeImages,
   } = props;
 
-  const { activeCellIndex, isEditorVisible, onEditorVisibilityChange } =
-    useContext(CellMetadataContext);
+  const {
+    activeCellIndex,
+    isEditorVisible,
+    onEditorVisibilityChange,
+    composableNotebooks,
+  } = useContext(CellMetadataContext);
+
+  // multi-notebook composition is still in development, so the cell type is
+  // offered only where it has been switched on
+  const cellTypes = composableNotebooks
+    ? CELL_TYPES
+    : CELL_TYPES.filter(t => t.value !== 'notebook');
 
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -76,8 +94,10 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
     stepName,
     stepDependencies,
     limits,
+    secrets,
     baseImage,
     enableCaching,
+    notebookPath,
     generateHtmlReport,
   });
 
@@ -101,7 +121,12 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
     [notebook, activeCellIndex, stepName],
   );
 
-  const cellType = RESERVED_CELL_NAMES.includes(stepName) ? stepName : 'step';
+  const isNotebookRef = stepName.startsWith('notebook:');
+  const cellType = isNotebookRef
+    ? 'notebook'
+    : RESERVED_CELL_NAMES.includes(stepName)
+      ? stepName
+      : 'step';
   const cellColor = stepName
     ? `#${ColorUtils.getColor(stepName)}`
     : 'transparent';
@@ -115,20 +140,43 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
 
   const [stepNameErrorMsg, setStepNameErrorMsg] = useState(STEP_NAME_ERROR_MSG);
 
+  const isDuplicateStepName = useCallback(
+    (value: string) =>
+      value !== stepName &&
+      TagsUtils.getAllSteps(notebook.content).includes(value),
+    [notebook, stepName],
+  );
+
   const onBeforeUpdate = useCallback(
     (value: string) => {
-      if (value === stepName) {
-        return false;
-      }
-      const stepNames = TagsUtils.getAllSteps(notebook.content);
-      if (stepNames.includes(value)) {
+      if (isDuplicateStepName(value)) {
         setStepNameErrorMsg('This name already exists.');
         return true;
       }
       setStepNameErrorMsg(STEP_NAME_ERROR_MSG);
       return false;
     },
-    [notebook, stepName],
+    [isDuplicateStepName],
+  );
+
+  // What the user is typing. Only valid, unused names are written to the cell
+  // tags, so an invalid or duplicate name is shown with its error but never saved.
+  const [stepNameInput, setStepNameInput] = useState(stepName);
+  React.useEffect(() => {
+    setStepNameInput(stepName);
+  }, [stepName]);
+
+  const onStepNameChange = useCallback(
+    (value: string) => {
+      setStepNameInput(value);
+      if (
+        new RegExp(STEP_NAME_PATTERN).test(value) &&
+        !isDuplicateStepName(value)
+      ) {
+        updateCellTags.updateStepName(value);
+      }
+    },
+    [isDuplicateStepName, updateCellTags],
   );
 
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
@@ -156,7 +204,7 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
           >
             <Select
               updateValue={updateCellTags.updateCellType}
-              values={CELL_TYPES}
+              values={cellTypes}
               value={cellType || 'step'}
               label={'Cell type'}
               index={0}
@@ -164,13 +212,25 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
               style={{ width: '30%' }}
             />
 
+            {isNotebookRef && (
+              <Input
+                label={'Notebook path'}
+                updateValue={updateCellTags.updateNotebookPath}
+                value={notebookPath || ''}
+                regex={'^.*\\.ipynb$'}
+                regexErrorMsg={NOTEBOOK_PATH_ERROR_MSG}
+                variant="outlined"
+                style={{ width: '60%' }}
+              />
+            )}
+
             {isStep && (
               <>
                 <Input
                   label={'Step name'}
-                  updateValue={updateCellTags.updateStepName}
-                  value={stepName}
-                  regex={'^([_a-z]([_a-z0-9]*)?)?$'}
+                  updateValue={onStepNameChange}
+                  value={stepNameInput}
+                  regex={STEP_NAME_PATTERN}
                   regexErrorMsg={stepNameErrorMsg}
                   variant="outlined"
                   onBeforeUpdate={onBeforeUpdate}
@@ -251,8 +311,11 @@ export const CellMetadataEditor: React.FC<IProps> = props => {
         stepName={stepName}
         limits={limits}
         updateLimits={updateCellTags.updateLimits}
+        secrets={secrets}
+        updateSecrets={updateCellTags.updateSecrets}
         baseImage={baseImage}
         resolvedDefaultBaseImage={resolvedDefaultBaseImage}
+        runtimeImages={runtimeImages}
         onUpdateBaseImage={updateCellTags.updateBaseImage}
         enableCaching={enableCaching}
         onUpdateCaching={updateCellTags.updateCaching}

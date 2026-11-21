@@ -38,13 +38,21 @@ def ping(request):
 
 
 def list_experiments(request):
-    """List Kubeflow Pipelines experiments."""
-    c = _get_client()
-    experiments = [
-        {"name": e.display_name, "id": e.experiment_id}
-        for e in c.list_experiments().experiments or []
-    ]
-    return experiments
+    """List Kubeflow Pipelines experiments.
+
+    Returns an empty list when KFP is unreachable so that the notebook-open
+    flow degrades silently instead of surfacing a blocking error dialog.
+    """
+    try:
+        c = _get_client()
+        experiments = [
+            {"name": exp.display_name, "id": exp.experiment_id}
+            for exp in c.list_experiments().experiments or []
+        ]
+        return experiments
+    except Exception as e:
+        log.warning("KFP not reachable, returning empty experiments list: %s", e)
+        return []
 
 
 def get_ui_host(request):

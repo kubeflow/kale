@@ -12,13 +12,165 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { test, expect } from '@playwright/test';
+import { test, expect, Locator, Page } from '@playwright/test';
+
+/** Opens JupyterLab and clicks the Kale sidebar tab. */
+async function openKaleTab(page: Page): Promise<void> {
+  // `?reset` starts from an empty workspace, so notebooks left open by earlier
+  // tests are not restored (and do not pop up a "Select Kernel" dialog).
+  await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
+
+  await page.waitForTimeout(3000);
+
+  // Dismiss the Git dialog if it appears
+  const dismissButton = page.locator('button', { hasText: 'Dismiss' });
+  if (await dismissButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await dismissButton.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Click the Kale sidebar tab (Kubeflow Pipelines Deployment Panel)
+  const kaleTab = page.locator('[title="Kubeflow Pipelines Deployment Panel"]');
+  await kaleTab.click();
+
+  await page.waitForTimeout(1000);
+}
+
+/** Opens the Kale tab, creates a fresh notebook, and enables Kale on it. */
+async function openKaleEnabledNotebook(page: Page): Promise<void> {
+  await openKaleTab(page);
+
+  // Create a new notebook
+  const pythonNotebook = page
+    .locator(
+      '.jp-LauncherCard:has(.jp-LauncherCard-label[title="Python 3 (ipykernel)"])',
+    )
+    .first();
+  if (!(await pythonNotebook.isVisible())) {
+    await page.getByRole('button', { name: 'New Launcher' }).click();
+  }
+  await pythonNotebook.click();
+
+  const notebookPanel = page.locator('.jp-NotebookPanel:visible');
+  await expect(notebookPanel).toBeVisible({ timeout: 5000 });
+  // Enable Kale
+  const enableSwitch = page.locator('input[name="enableKale"]');
+  await enableSwitch.check();
+  await expect(enableSwitch).toBeChecked();
+}
+
+/** Kale rewrites metadata on every change - accept unsaved changes. */
+async function acceptUnsavedChangesPrompt(page: Page): Promise<void> {
+  const prompt = page
+    .locator('.jp-Dialog')
+    .filter({ hasText: 'Unsaved Changes' });
+  await page.addLocatorHandler(prompt, async dialog => {
+    await dialog.getByRole('button', { name: 'YES' }).click();
+  });
+}
+
+/** Dismiss Kale's error dialog to unblock other actions. */
+async function dismissKaleErrorDialogs(page: Page): Promise<void> {
+  const errorDialog = page.locator('.jp-Dialog').filter({ hasText: 'Error' });
+  await page.addLocatorHandler(errorDialog, async dialog => {
+    await dialog.getByRole('button', { name: 'Close' }).click();
+  });
+}
+
+function getDeployButtonGroup(page: Page): Locator {
+  return page.locator('[aria-label="split button"]');
+}
+
+/** Creates a named step and opens its Base Image configuration. */
+async function openBaseImageDialog(page: Page): Promise<Locator> {
+  await openKaleEnabledNotebook(page);
+  await page
+    .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+    .evaluate((button: HTMLButtonElement) => button.click());
+  const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+  await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+  await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+  const configureStep = editor.getByRole('button', { name: 'Configure step' });
+  await expect(configureStep).toBeEnabled();
+  await configureStep.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+  await expect(
+    dialog.getByRole('combobox', { name: 'Base Image' }),
+  ).toBeVisible();
+  return dialog;
+}
+
+/** Reads the active cell's actual notebook tags, not just the displayed label. */
+async function getActiveCellTags(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const lab = (window as any).jupyterapp;
+    return (
+      lab.shell.currentWidget.content.activeCell.model.getMetadata('tags') ?? []
+    );
+  });
+}
+
+/** Writes the active cell's notebook tags directly, as the Property Inspector does. */
+async function setActiveCellTags(page: Page, tags: string[]): Promise<void> {
+  await page.evaluate(newTags => {
+    const lab = (window as any).jupyterapp;
+    lab.shell.currentWidget.content.activeCell.model.setMetadata(
+      'tags',
+      newTags,
+    );
+  }, tags);
+}
+
+function getAddVolumeDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: 'Add Volume' });
+}
+
+/** Opens the "Add Volume" dialog via the "+ Add Volume" panel button. */
+async function openAddVolumeDialog(page: Page): Promise<Locator> {
+  await page.locator('.kale-add-volume-btn').click();
+  const dialog = getAddVolumeDialog(page);
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  return dialog;
+}
+
+/** Fills and submits the Add Volume dialog, then waits for it to close. */
+async function fillAndSubmitVolume(
+  dialog: Locator,
+  { name, mountPoint }: { name: string; mountPoint: string },
+): Promise<void> {
+  await dialog.getByLabel('PVC name').fill(name);
+  await dialog.getByRole('textbox', { name: 'Mount path' }).fill(mountPoint);
+  await dialog.getByRole('button', { name: 'Add volume', exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
+}
+
+// Without a KFP cluster, Kale's KFP calls pop up an error dialog at an
+// unpredictable moment after a notebook opens. Handle it (and the unsaved
+// changes prompt) in every test so it can never block a click.
+test.beforeEach(async ({ page }) => {
+  await dismissKaleErrorDialogs(page);
+  await acceptUnsavedChangesPrompt(page);
+});
+
+// Every test opens a new notebook, and with it a kernel. Shut them down so they
+// don't pile up on the shared server and slow JupyterLab down for later tests.
+test.afterEach(async ({ page }) => {
+  await page
+    .evaluate(async () => {
+      const lab = (window as any).jupyterapp;
+      await lab?.serviceManager.sessions.shutdownAll();
+      await lab?.serviceManager.kernels.shutdownAll();
+    })
+    .catch(() => undefined);
+});
 
 test.describe('Kale Empty State', () => {
   test('should open the Kale panel and verify the empty-state components', async ({
     page,
   }) => {
-    await page.goto('http://localhost:8889/lab', { waitUntil: 'load' });
+    await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
 
     await page.waitForTimeout(3000);
 
@@ -71,7 +223,7 @@ test.describe('Open a Notebook and Enable Kale', () => {
   test('should open a JupyterNotebook, enable Kale with the toggle, and verify UI components', async ({
     page,
   }) => {
-    await page.goto('http://localhost:8889/lab', { waitUntil: 'load' });
+    await page.goto('http://localhost:8889/lab?reset', { waitUntil: 'load' });
 
     await page.waitForTimeout(3000);
 
@@ -122,6 +274,443 @@ test.describe('Open a Notebook and Enable Kale', () => {
     await expect(page.locator('label:has-text("Cell type")')).toBeVisible();
     await expect(page.locator('label:has-text("Step name")')).toBeVisible();
     await expect(page.locator('label:has-text("Depends on")')).toBeVisible();
-    await expect(page.locator('[aria-label="Configure step"]')).toBeVisible();
+    // The Tooltip wrapper carries the same aria-label, so match the button only
+    await expect(
+      page.getByRole('button', { name: 'Configure step' }),
+    ).toBeVisible();
+  });
+});
+
+test.describe('Trigger a Pipeline Compilation', () => {
+  test(' should choose an option, deploy the action, and update the button', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+
+    // Wait for pipeline metadata to load so the deploy button is enabled
+    const experimentName = page.getByLabel('Experiment Name');
+    await expect(experimentName).toBeVisible({ timeout: 60000 });
+    await experimentName.fill('test-experiment');
+    await page.getByLabel('Pipeline Name').fill('test-pipeline');
+
+    // The deploy button defaults to "Compile and Run"
+    const deployButtonGroup = getDeployButtonGroup(page);
+    const mainDeployButton = deployButtonGroup.locator('button').first();
+    await expect(mainDeployButton).toBeEnabled({ timeout: 10000 });
+    await expect(mainDeployButton).toHaveText('Compile and Run');
+
+    // Open the three-dots menu
+    await deployButtonGroup.locator('button').last().click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible({ timeout: 5000 });
+
+    // Pick a new 'Compile' action
+    await menu.getByRole('menuitem', { name: 'Compile and Save' }).click();
+
+    // The deploy must start without a second click on the main button
+    const deployProgress = page.locator('.deploy-progress');
+    await expect(deployProgress).toBeVisible({ timeout: 10000 });
+    await expect(
+      deployProgress.locator('.deploy-progress-label', {
+        hasText: 'Validating notebook...',
+      }),
+    ).toBeVisible();
+
+    // The button must keep the newly chosen action as its new name
+    await expect(mainDeployButton).toBeEnabled({ timeout: 60000 });
+    await expect(mainDeployButton).toHaveText('Compile and Save');
+  });
+});
+
+test.describe('Step base image', () => {
+  test('saves a custom image when the dialog closes without pressing Enter', async ({
+    page,
+  }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.fill('registry.example.com/team/image:v1');
+    await imageInput.press('Escape');
+    await dialog.getByRole('button', { name: 'Ok' }).click();
+
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:registry.example.com/team/image:v1');
+    await page.getByRole('button', { name: 'Configure step' }).click();
+    await expect(imageInput).toHaveValue('registry.example.com/team/image:v1');
+  });
+
+  test('stores the image reference when a named runtime image is selected', async ({
+    page,
+  }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.click();
+    await page.getByRole('option', { name: /Python 3\.12/ }).click();
+
+    await expect(imageInput).toHaveValue('Python 3.12');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveText('python:3.12');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:python:3.12');
+
+    await dialog.getByRole('button', { name: 'Ok' }).click();
+    await expect(page.locator('.kale-inline-base-image-name')).toHaveText(
+      'Python 3.12',
+    );
+    await page.getByRole('button', { name: 'Configure step' }).click();
+    await expect(imageInput).toHaveValue('Python 3.12');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveText('python:3.12');
+  });
+
+  test('reset to default removes the cell image override', async ({ page }) => {
+    const dialog = await openBaseImageDialog(page);
+    const imageInput = dialog.getByRole('combobox', { name: 'Base Image' });
+
+    await imageInput.click();
+    await page.getByRole('option', { name: /Python 3\.12/ }).click();
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('image:python:3.12');
+
+    await dialog.getByRole('button', { name: 'Reset to Default' }).click();
+
+    await expect(imageInput).toHaveValue('');
+    await expect(
+      dialog.getByRole('region', { name: 'Selected image reference' }),
+    ).toHaveCount(0);
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .not.toContain('image:python:3.12');
+  });
+});
+
+test.describe('Cell tags', () => {
+  test('editing a step keeps the tags the Kale editor does not manage', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    const stepName = editor.getByRole('textbox', { name: 'Step name' });
+    await stepName.fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+    // Tags added outside the Kale editor, e.g. in the Property Inspector
+    const otherTags = ['annotation:team:ml', 'label:env:prod', 'parameters'];
+    await setActiveCellTags(page, ['step:train', ...otherTags]);
+
+    await stepName.fill('train_model');
+
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('step:train_model');
+    const tags = await getActiveCellTags(page);
+    expect(tags).toEqual(expect.arrayContaining(otherTags));
+    expect(tags).not.toContain('step:train');
+  });
+});
+
+test.describe('Step name', () => {
+  test('does not save an invalid or duplicate name', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    // A second step the first cell's name must not clash with
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      lab.shell.currentWidget.content.model.sharedModel.insertCells(1, [
+        { cell_type: 'code', source: '', metadata: { tags: ['step:load'] } },
+      ]);
+    });
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .first()
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    const stepName = editor.getByRole('textbox', { name: 'Step name' });
+
+    await stepName.fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('Train Model');
+    await expect(editor.getByText('Step name must consist of')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+
+    await stepName.fill('load');
+    await expect(editor.getByText('This name already exists.')).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('step:train');
+    expect(await getActiveCellTags(page)).not.toContain('step:load');
+  });
+});
+
+test.describe('Inline GPU label', () => {
+  test('only shows GPU limits as a GPU request', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+    await page.evaluate(() => {
+      const lab = (window as any).jupyterapp;
+      const shared = lab.shell.currentWidget.content.model.sharedModel;
+      shared.deleteCellRange(0, shared.cells.length);
+      shared.insertCells(0, [
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: { tags: ['step:prepare', 'limit:memory:8Gi'] },
+        },
+        {
+          cell_type: 'code',
+          source: '',
+          metadata: {
+            tags: ['step:train', 'limit:cpu:2', 'limit:nvidia.com/gpu:1'],
+          },
+        },
+      ]);
+    });
+
+    const cells = page.locator('.jp-NotebookPanel:visible .jp-Cell');
+    await expect(cells.nth(1)).toContainText('GPU request: nvidia.com/gpu - 1');
+    await expect(cells.nth(0)).toContainText('prepare');
+    await expect(cells.nth(0)).toContainText('Memory limit: 8Gi');
+    await expect(cells.nth(0)).not.toContainText('GPU request');
+  });
+});
+
+test.describe('Step memory limit', () => {
+  test('keeps the limit while its value is cleared and retyped', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    await page
+      .locator('.jp-NotebookPanel:visible .kale-editor-toggle')
+      .evaluate((button: HTMLButtonElement) => button.click());
+    const editor = page.locator('.kale-metadata-editor-wrapper.opened:visible');
+    await editor.getByRole('textbox', { name: 'Step name' }).fill('train');
+    await expect.poll(() => getActiveCellTags(page)).toContain('step:train');
+    await editor.getByRole('button', { name: 'Configure step' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Configure Step' });
+    await dialog.getByRole('tab', { name: 'Memory' }).click();
+    const memorySwitch = dialog.locator('input[name="enableMemoryLimit"]');
+    const memoryInput = dialog.getByLabel('Memory Limit (e.g., 2Gi)');
+
+    await memorySwitch.click();
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:2Gi');
+
+    await memoryInput.fill('512Mi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:512Mi');
+
+    // Clearing the field keeps the limit on and its last valid value
+    await memoryInput.fill('');
+    await expect(memorySwitch).toBeChecked();
+    await expect(memoryInput).toBeEnabled();
+    await expect(
+      dialog.getByText('Enter a memory limit, e.g. 2Gi.'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    // A value KFP would reject is not written
+    await memoryInput.fill('1.5Gi');
+    await expect(
+      dialog.getByText('Use a whole number with an optional unit'),
+    ).toBeVisible();
+    expect(await getActiveCellTags(page)).toContain('limit:memory:512Mi');
+
+    await memoryInput.fill('4Gi');
+    await expect
+      .poll(() => getActiveCellTags(page))
+      .toContain('limit:memory:4Gi');
+    expect(await getActiveCellTags(page)).not.toContain('limit:memory:512Mi');
+  });
+});
+
+test.describe('Experiment name', () => {
+  test('accepts any non-empty name up to 128 characters, as KFP does', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+    const experimentName = page.getByLabel('Experiment Name');
+    await expect(experimentName).toBeVisible({ timeout: 60000 });
+    await page.getByLabel('Pipeline Name').fill('test-pipeline');
+    const deployButton = getDeployButtonGroup(page).locator('button').first();
+
+    // Uppercase letters and spaces are valid in KFP (e.g. its "Default")
+    await experimentName.fill('Taxicab Experiment');
+    await expect(deployButton).toBeEnabled({ timeout: 10000 });
+
+    await experimentName.fill('   ');
+    await expect(
+      page.getByText('Experiment name cannot be only spaces.'),
+    ).toBeVisible();
+    await expect(deployButton).toBeDisabled();
+
+    await experimentName.fill('a'.repeat(129));
+    await expect(
+      page.getByText('Experiment name must be 128 characters or fewer.'),
+    ).toBeVisible();
+    await expect(deployButton).toBeDisabled();
+  });
+});
+
+test.describe('Volumes panel — add a volume', () => {
+  test('should add a volume and show it in the volumes list', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+
+    const dialog = await openAddVolumeDialog(page);
+    await fillAndSubmitVolume(dialog, {
+      name: 'raw-data',
+      mountPoint: '/data',
+    });
+
+    await expect(
+      page.locator('.kale-volume-name', { hasText: 'raw-data' }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.kale-volume-mount', { hasText: '/data' }),
+    ).toBeVisible();
+  });
+});
+
+test.describe('Volumes panel — validation', () => {
+  test('should block a duplicate volume name', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+
+    const firstDialog = await openAddVolumeDialog(page);
+    await fillAndSubmitVolume(firstDialog, {
+      name: 'raw-data',
+      mountPoint: '/data',
+    });
+
+    const dialog = await openAddVolumeDialog(page);
+    await dialog.getByLabel('PVC name').fill('raw-data');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/other');
+
+    await expect(
+      dialog.getByText('This volume name is already used by another volume'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add volume', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('should block a duplicate mount path', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+
+    const firstDialog = await openAddVolumeDialog(page);
+    await fillAndSubmitVolume(firstDialog, {
+      name: 'raw-data',
+      mountPoint: '/data',
+    });
+
+    const dialog = await openAddVolumeDialog(page);
+    await dialog.getByLabel('PVC name').fill('other-data');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/data');
+
+    await expect(
+      dialog.getByText('Mount path already used by another volume'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add volume', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('should reject a mount path that is not absolute', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+
+    const dialog = await openAddVolumeDialog(page);
+    await dialog.getByLabel('PVC name').fill('raw-data');
+    await dialog
+      .getByRole('textbox', { name: 'Mount path' })
+      .fill('relative/path');
+
+    await expect(
+      dialog.getByText('Mount path must be an absolute path starting with "/"'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add volume', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('should reject a mount path with path traversal segments', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+
+    const dialog = await openAddVolumeDialog(page);
+    await dialog.getByLabel('PVC name').fill('raw-data');
+    await dialog
+      .getByRole('textbox', { name: 'Mount path' })
+      .fill('/data/../secret');
+
+    await expect(
+      dialog.getByText('Mount path must not contain "." or ".." segments'),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add volume', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('should reject a mount path containing spaces', async ({ page }) => {
+    await openKaleEnabledNotebook(page);
+
+    const dialog = await openAddVolumeDialog(page);
+    await dialog.getByLabel('PVC name').fill('raw-data');
+    await dialog.getByRole('textbox', { name: 'Mount path' }).fill('/my data');
+
+    await expect(
+      dialog.getByText(
+        'Mount path may only contain letters, numbers, ".", "_" and "-" in each segment',
+      ),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add volume', exact: true }),
+    ).toBeDisabled();
+  });
+});
+
+test.describe('Volumes panel — layout', () => {
+  test('should always render the advanced settings notice below the Volumes section', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+
+    const volumesHeader = page.locator('.kale-header', { hasText: 'Volumes' });
+    const settingsNotice = page.locator('.kale-settings-notice');
+    await expect(volumesHeader).toBeVisible();
+    await expect(settingsNotice).toBeVisible();
+
+    const volumesBox = await volumesHeader.boundingBox();
+    const noticeBox = await settingsNotice.boundingBox();
+    expect(volumesBox).not.toBeNull();
+    expect(noticeBox).not.toBeNull();
+    expect(noticeBox!.y).toBeGreaterThan(volumesBox!.y);
+  });
+
+  test('should not stretch the "Select from notebook" button to the dialog width', async ({
+    page,
+  }) => {
+    await openKaleEnabledNotebook(page);
+
+    const dialog = await openAddVolumeDialog(page);
+    const selectFromNotebookBtn = dialog.getByRole('button', {
+      name: 'Select from notebook',
+    });
+    await expect(selectFromNotebookBtn).toBeVisible();
+
+    const dialogBox = await dialog.boundingBox();
+    const btnBox = await selectFromNotebookBtn.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(btnBox).not.toBeNull();
+    expect(btnBox!.width).toBeLessThan(dialogBox!.width * 0.6);
   });
 });

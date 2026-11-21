@@ -18,8 +18,15 @@ export const CELL_TYPES = [
   { value: 'pipeline-parameters', label: 'Pipeline Parameters' },
   { value: 'pipeline-metrics', label: 'Pipeline Metrics' },
   { value: 'step', label: 'Pipeline Step' },
+  { value: 'notebook', label: 'Notebook' },
   { value: 'skip', label: 'Skip Cell' },
 ];
+
+// Placed in a cell when it becomes a notebook reference: the cell names
+// another notebook and holds no code of its own.
+export const NOTEBOOK_REF_CELL_HINT =
+  '# This cell references another notebook, so it does not run code of its own.\n' +
+  '# Put the path in the Kale panel, and keep your code in a Pipeline Step cell.';
 
 export const RESERVED_CELL_NAMES = [
   'imports',
@@ -32,9 +39,11 @@ export const KALE_TAG_PREFIXES = [
   'step:',
   'prev:',
   'limit:',
+  'secret:',
   'image:',
   'cache:',
   'report:',
+  'notebook:',
   'skip',
   'imports',
   'functions',
@@ -64,5 +73,12 @@ export const RESERVED_CELL_NAMES_CHIP_COLOR: { [id: string]: string } = {
   functions: 'a32626',
 };
 
+// Same rule as the backend's `step:` tag; an empty name merges the cell into
+// the previous step.
+export const STEP_NAME_PATTERN = '^([_a-z]([_a-z0-9]*)?)?$';
+
 export const STEP_NAME_ERROR_MSG =
   "Step name must consist of lower case alphanumeric characters or '_', and can not start with a digit.";
+
+export const NOTEBOOK_PATH_ERROR_MSG =
+  'Path to a .ipynb file, relative to this notebook.';

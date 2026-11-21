@@ -51,6 +51,14 @@ class test:
         self.a = b
 """
 
+_async_snippet = """
+async def _test(a):
+    local_var = a
+
+async def _test2(b, *args, **kwargs):
+    var = b
+"""
+
 _ctx_mngr_snippet = """
 with my_context(param) as ctx:
     res = ctx.use()
@@ -71,6 +79,9 @@ def fun()
         (_foos_snippet, ["_test", "_test2"]),
         (_class_snippet, ["test"]),
         (_ctx_mngr_snippet, ["my_context", "param", "res", "ctx"]),
+        # async functions are treated like regular functions: the function
+        # name is a candidate, their local variables must not leak out.
+        (_async_snippet, ["_test", "_test2"]),
     ],
 )
 def test_get_marshal_candidates(code, target):
@@ -105,7 +116,12 @@ def test_get_list_tuple_names(code, target):
 
 @pytest.mark.parametrize(
     "code,target",
-    [("", []), (_foos_snippet, ["_test", "_test2"]), (_class_snippet, ["__init__", "foo", "test"])],
+    [
+        ("", []),
+        (_foos_snippet, ["_test", "_test2"]),
+        (_class_snippet, ["__init__", "foo", "test"]),
+        (_async_snippet, ["_test", "_test2"]),
+    ],
 )
 def test_get_function_and_class_names(code, target):
     """Test get_function_and_class_names function."""
@@ -121,6 +137,9 @@ def test_get_function_and_class_names(code, target):
         ("a = 3", {"a": (int.__name__, 3)}),
         ("a = 2.", {"a": (float.__name__, 2.0)}),
         ("a = True", {"a": (bool.__name__, True)}),
+        ("a = -1", {"a": (int.__name__, -1)}),
+        ("a = -0.5", {"a": (float.__name__, -0.5)}),
+        ("a = +3", {"a": (int.__name__, 3)}),
     ],
 )
 def test_parse_assignments_expressions(code, target):
@@ -138,6 +157,7 @@ def test_parse_assignments_expressions(code, target):
         "a = b = 3",
         "a = [2]",
         "a = b",
+        "a = -b",
     ],
 )
 def test_parse_assignments_expressions_exc(code):
@@ -153,6 +173,9 @@ def test_parse_assignments_expressions_exc(code):
         ("   ", {}),
         ("print(a)", {"a": "a"}),
         ("print(a)\nprint(var)\nprint(test_var)", {"a": "a", "var": "var", "test-var": "test_var"}),
+        ("# final metrics\nprint(accuracy)", {"accuracy": "accuracy"}),
+        ("print(accuracy)  # test set", {"accuracy": "accuracy"}),
+        ("# only a comment", {}),
     ],
 )
 def test_parse_metrics_print_statements(code, target):
@@ -180,6 +203,19 @@ def foo():
     """
 
     target = {"foo": "def foo():\n    print('hello')\n    print(x)\n"}
+    assert kale_ast.parse_functions(code) == target
+
+
+def test_parse_functions_async():
+    """async functions must be parsed just like regular functions."""
+    code = """
+x = 5
+async def foo():
+    print('hello')
+    print(x)
+    """
+
+    target = {"foo": "async def foo():\n    print('hello')\n    print(x)\n"}
     assert kale_ast.parse_functions(code) == target
 
 

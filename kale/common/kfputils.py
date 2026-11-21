@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import hashlib
 import importlib.util
 import json
@@ -98,6 +99,15 @@ def compile_pipeline(pipeline_source: str, pipeline_name: str) -> str:
     tmp_dir = tempfile.mkdtemp()
     # copy generated script to temp dir
     copyfile(pipeline_source, tmp_dir + "/" + "pipeline_code.py")
+    # a composed pipeline imports its per-notebook DSL modules, generated next
+    # to it; carry those along so the script stays executable from the temp dir.
+    # Only the generated modules, so an unrelated script left in the output
+    # directory is never imported.
+    from kale.compiler import MODULE_PREFIX  # imported here: compiler imports this module
+
+    modules = os.path.join(os.path.dirname(pipeline_source), f"{MODULE_PREFIX}*.py")
+    for sibling in glob.glob(modules):
+        copyfile(sibling, os.path.join(tmp_dir, os.path.basename(sibling)))
 
     path = tmp_dir + "/" + "pipeline_code.py"
     spec = importlib.util.spec_from_file_location(tmp_dir.split("/")[-1], path)

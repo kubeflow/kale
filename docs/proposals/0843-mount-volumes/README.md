@@ -125,7 +125,7 @@ When they compile a Kale pipeline, the step Pods do not have `/data` mounted
 and the pipeline fails.
 
 With this feature, the user clicks "Use notebook volumes" in the Volumes panel.
-Kale calls the existing `nb.list_volumes` RPC and opens a selection dialog
+Kale calls the existing `nb.list_notebook_volumes` RPC and opens a selection dialog
 listing all PVCs currently mounted on the notebook Pod. The dialog provides a "Select all" shortcut alongside per-volume checkboxes,
 so the user can include all or any subset of the available volumes. The
 user checks `my-data` and confirms. Kale pre-populates a volume entry for
@@ -290,7 +290,7 @@ Kale Deployment Panel
 | Add Volume | Appends a blank `{ name: '', mount_point: '' }` entry to `metadata.volumes` |
 | Remove (×) | Drops that entry from the list |
 | "+ Add Volume" | Opens the inline add-form; does not commit anything until "Add volume" is confirmed |
-| "Select from notebook" | Calls `nb.list_volumes` RPC and shows a checklist of PVCs currently mounted on the notebook Pod with a "Select all" shortcut and per-volume checkboxes; confirming with "Add selected" bulk-adds one entry per checked volume, bypassing the single-volume form |
+| "Select from notebook" | Calls `nb.list_notebook_volumes` RPC and shows a checklist of PVCs currently mounted on the notebook Pod with a "Select all" shortcut and per-volume checkboxes; confirming with "Add selected" bulk-adds one entry per checked volume, bypassing the single-volume form |
 | PVC field | Combobox — free-text input with suggestions populated from `list_pvcs` RPC; suggestions are shown when available but typing a name manually always works |
 | Mount path | Free-text; must be unique across entries |
 | "Expose as env var" checkbox | When checked, Kale derives an env var name from the PVC name (`KALE_VOLUME_<SCREAMING_SNAKE_CASE>`, e.g. `raw-data` → `KALE_VOLUME_RAW_DATA`) and shows it read-only next to the checkbox with a copy button; the compiler injects this variable into every step Pod with the mount path as its value |
@@ -377,7 +377,7 @@ The Left Panel's PVC dropdown needs to show which PVCs exist in the cluster
 namespace. Rather than calling the Kubernetes API directly from the frontend,
 the UI calls a new backend RPC that wraps the API call and handles auth/errors
 in one place — consistent with how other cluster resources (e.g.
-`list_volumes`, `list_notebooks`) are already exposed.
+`list_notebook_volumes`, `list_notebooks`) are already exposed.
 
 `list_pvcs` is added to `backend/kale/rpc/nb.py`:
 
@@ -389,7 +389,7 @@ def list_pvcs(request):
 Returning an empty list on failure means the combobox shows no suggestions,
 but the user can still type a PVC name manually.
 
-The existing `nb.list_volumes` RPC (which returns PVCs mounted on the notebook
+The existing `nb.list_notebook_volumes` RPC (which returns PVCs mounted on the notebook
 Pod) is reused as-is for the "Use notebook volumes" button.
 
 ### CLI
@@ -458,7 +458,7 @@ dead flags in place causes confusion.
 
 - **Unit tests** (`test_rpc_nb.py`): `list_pvcs` returns the correct PVC names
   with a mocked Kubernetes client; returns an empty list on API error.
-  `list_volumes` pre-fill populates entries matching the notebook Pod's mounts.
+  `list_notebook_volumes` pre-fill populates entries matching the notebook Pod's mounts.
 - **Unit tests**: `VolumeConfig` parsing (name, mount point, type); template
   rendering with 0, 1, and N volumes; duplicate mount path detection; empty
   volume list produces no `mount_pvc` calls.
@@ -491,7 +491,7 @@ dead flags in place causes confusion.
 | 1 | Backend | Add `list_pvcs` RPC in `rpc/nb.py` using existing `k8sutils.get_v1_client()` |
 | 2 | Frontend | Add Volumes section to Left Panel; add/remove rows; save to `metadata.volumes` |
 | 2 | Frontend | PVC combobox with suggestions from `list_pvcs` RPC; free-text always available |
-| 2 | Frontend | "Use notebook volumes" button wired to existing `nb.list_volumes` RPC |
+| 2 | Frontend | "Use notebook volumes" button wired to existing `nb.list_notebook_volumes` RPC |
 | 2 | Frontend | Light validation (duplicate paths, empty fields, unknown PVC name) |
 | 3 | Tests | Unit + UI + golden-file + E2E tests |
 | 3 | Docs | Update README; note RWO/parallel caveats and `.after()` workaround |

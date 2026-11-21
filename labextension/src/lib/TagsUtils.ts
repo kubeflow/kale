@@ -19,16 +19,27 @@ import { KALE_TAG_PREFIXES } from '../widgets/cell-metadata/constants';
 
 const IMAGE_TAG = 'image:';
 const CACHE_TAG = 'cache:';
+const SECRET_TAG = 'secret:';
 const CACHE_ENABLED_VALUE = 'enabled';
 const REPORT_TAG = 'report:';
 const REPORT_ENABLED_VALUE = 'enabled';
+
+export interface ISecretRef {
+  secretName: string;
+  secretKey: string;
+}
+
+const NOTEBOOK_PREFIX = 'notebook:';
 
 interface IKaleCellTags {
   stepName: string;
   prevStepNames: string[];
   limits?: { [id: string]: string };
+  secrets?: { [envName: string]: ISecretRef };
   baseImage?: string;
   enableCaching?: boolean;
+  // set when the cell is a `notebook:` reference (stepName = 'notebook:<name>')
+  notebookPath?: string;
   generateHtmlReport?: boolean;
 }
 
@@ -49,7 +60,13 @@ export default class TagsUtils {
     for (const idx of Array(toCell).keys()) {
       // get the tags of the current cell
       const mt = this.getKaleCellTags(notebook, idx);
-      if (mt && mt.stepName && mt.stepName !== '') {
+      if (
+        mt &&
+        mt.stepName &&
+        mt.stepName !== '' &&
+        // notebook references are not steps: they cannot be `prev:` targets
+        !mt.stepName.startsWith(NOTEBOOK_PREFIX)
+      ) {
         steps.add(mt.stepName);
       }
     }
@@ -66,6 +83,11 @@ export default class TagsUtils {
   public static getPreviousStep(notebook: Notebook, current: number): string | undefined {
     for (let i = current - 1; i >= 0; i--) {
       const mt = this.getKaleCellTags(notebook, i);
+      // a `notebook:` reference breaks the merge chain: untagged cells after it
+      // belong to the NEXT step, never to a step above the reference
+      if (mt && mt.stepName.startsWith(NOTEBOOK_PREFIX)) {
+        return undefined;
+      }
       if (
         mt &&
         mt.stepName &&
@@ -94,6 +116,11 @@ export default class TagsUtils {
         if (RESERVED_CELL_NAMES.includes(v)) {
           return v;
         }
+        // a `notebook:<name>` reference is kept whole, so that the cell type
+        // can be told apart from a step by its prefix
+        if (v.startsWith(NOTEBOOK_PREFIX)) {
+          return v;
+        }
         if (v.startsWith('step:')) {
           return v.replace('step:', '');
         }
@@ -113,7 +140,18 @@ export default class TagsUtils {
         .map(lim => {
           const values = lim.split(':');
           // get the limit key and value
-          limits[values[1]] = values[2];
+          if (values[1] && values[2]) {
+            limits[values[1]] = values[2];
+          }
+        });
+
+      const secrets: { [envName: string]: ISecretRef } = {};
+      tags
+        .filter(v => v.startsWith(SECRET_TAG))
+        .map(s => {
+          const values = s.split(':');
+          // secret:<secretName>:<secretKey>:<envName>
+          secrets[values[3]] = { secretName: values[1], secretKey: values[2] };
         });
 
       // Parse base image tag
@@ -140,12 +178,25 @@ export default class TagsUtils {
         generateHtmlReport = reportValue === REPORT_ENABLED_VALUE ? true : false;
       }
 
+      const stepName = b_name[0] || '';
+      let notebookPath: string | undefined;
+      if (stepName.startsWith(NOTEBOOK_PREFIX)) {
+        notebookPath =
+          (CellUtils.getCellMetaData(
+            notebook,
+            index,
+            'notebook_path',
+          ) as unknown as string) || undefined;
+      }
+
       return {
-        stepName: b_name[0] || '',
+        stepName: stepName,
         prevStepNames: prevs,
         limits: limits,
+        secrets: secrets,
         baseImage: baseImage,
         enableCaching: enableCaching,
+        notebookPath: notebookPath,
         generateHtmlReport: generateHtmlReport,
       };
     }
@@ -153,30 +204,74 @@ export default class TagsUtils {
   }
 
   /**
-   * Set the provided Kale metadata into the specified notebook cell
+   * Set the provided Kale metadata into the specified notebook cell.
+   *
+   * This works in two phases:
+   * 1. For a notebook reference, store the referenced notebook's path in the
+   *    cell metadata (`notebook_path`).
+   * 2. Rebuild the cell's Kale tags from `metadata` and write them to the
+   *    cell's `tags`.
+   *
+   * Tags the Kale editor does not manage (e.g. `annotation:`, `label:` or
+   * tags from other tools) are kept on the cell.
    * @param notebookPanel NotebookPanel object
    * @param index index of the target cell
    * @param metadata Kale metadata
-   * @param save True to save the notebook after the operation
    */
   public static setKaleCellTags(
     notebookPanel: NotebookPanel,
     index: number,
     metadata: IKaleCellTags
   ): Promise<any> {
-    // make the dict to save to tags
+    // Phase 1: a notebook reference carries its target's path in the cell
+    // metadata (`notebook_path`), which the backend resolves relative to this
+    // notebook.
+    if (metadata.stepName.startsWith(NOTEBOOK_PREFIX)) {
+      if (metadata.notebookPath !== undefined) {
+        CellUtils.setCellMetaData(
+          notebookPanel,
+          index,
+          'notebook_path',
+          metadata.notebookPath,
+        );
+      }
+    } else {
+      // The cell is no longer a reference, so the path it pointed at is stale.
+      // Drop it here, where the tags are rewritten, so the two cannot disagree
+      // about whether this cell still references a notebook.
+      CellUtils.deleteCellMetaData(notebookPanel, index, 'notebook_path');
+    }
+
+    // Phase 2: rebuild the Kale tags and write them to the cell.
     let nb = metadata.stepName;
-    // not a reserved name
-    if (!RESERVED_CELL_NAMES.includes(metadata.stepName)) {
+    // not a reserved name or a notebook reference (written as-is)
+    if (
+      !RESERVED_CELL_NAMES.includes(metadata.stepName) &&
+      !metadata.stepName.startsWith(NOTEBOOK_PREFIX)
+    ) {
       nb = 'step:' + nb;
     }
     const stepDependencies = metadata.prevStepNames || [];
     const limits = metadata.limits || {};
+    const secrets = metadata.secrets || {};
     const baseImage = metadata.baseImage;
     const tags = [nb]
       .concat(stepDependencies.map(v => 'prev:' + v))
       .concat(
-        Object.keys(limits).map(lim => 'limit:' + lim + ':' + limits[lim]),
+        Object.keys(limits)
+          .filter(lim => limits[lim] && String(limits[lim]).trim() !== '')
+          .map(lim => 'limit:' + lim + ':' + limits[lim]),
+      )
+      .concat(
+        Object.keys(secrets).map(
+          env =>
+            SECRET_TAG +
+            secrets[env].secretName +
+            ':' +
+            secrets[env].secretKey +
+            ':' +
+            env,
+        ),
       );
 
     // Add base image tag if specified
@@ -194,7 +289,23 @@ export default class TagsUtils {
       tags.push(REPORT_TAG + (metadata.generateHtmlReport ? 'enabled' : 'disabled'));
     }
 
-    return CellUtils.setCellMetaData(notebookPanel, index, 'tags', tags);
+    // Keep the tags this editor does not manage (e.g. `annotation:`, `label:`
+    // or tags from other tools), as `removeAllKaleTags` does: the write below
+    // replaces the cell's whole tag list.
+    const currentTags: string[] =
+      CellUtils.getCellMetaData(notebookPanel.content, index, 'tags') || [];
+    const otherTags = currentTags.filter(
+      tag =>
+        !KALE_TAG_PREFIXES.some(prefix => tag.startsWith(prefix)) &&
+        !tag.startsWith(NOTEBOOK_PREFIX),
+    );
+
+    return CellUtils.setCellMetaData(
+      notebookPanel,
+      index,
+      'tags',
+      tags.concat(otherTags),
+    );
   }
 
   /**
@@ -286,6 +397,11 @@ export default class TagsUtils {
     const filteredTags = currentTags.filter(
       tag => !KALE_TAG_PREFIXES.some(prefix => tag.startsWith(prefix)),
     );
+
+    // `notebook_path` is not a tag, so the filter above cannot reach it.
+    // Clearing a reference cell has to remove it too, or the cell reads as
+    // cleared while still carrying the path it referenced.
+    CellUtils.deleteCellMetaData(notebook, activeCellIndex, 'notebook_path');
 
     CellUtils.setCellMetaData(
       notebook,

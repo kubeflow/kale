@@ -16,6 +16,14 @@ export type DeployType = 'compile' | 'run' | 'upload';
 
 export const PIPELINE_NAME_MAX_LENGTH = 124;
 
+// KFP stores an experiment's name in a varchar(128) column and only requires
+// it to be non-empty, so uppercase letters, spaces etc. are all valid.
+export const EXPERIMENT_NAME_MAX_LENGTH = 128;
+
+/** Whether `name` can be used for a new KFP experiment. */
+export const isValidExperimentName = (name: string): boolean =>
+  name.trim() !== '' && name.length <= EXPERIMENT_NAME_MAX_LENGTH;
+
 export interface IExperiment {
   id: string;
   name: string;
@@ -40,6 +48,13 @@ export interface ISecurityContext {
   run_as_non_root?: boolean;
 }
 
+export interface IVolumeConfig {
+  name: string;
+  mount_point: string;
+  type: 'pvc';
+  expose_as_env_var?: boolean;
+}
+
 // keep names with Python notation because they will be read
 // in python by Kale.
 export interface IKaleNotebookMetadata {
@@ -50,6 +65,7 @@ export interface IKaleNotebookMetadata {
   base_image: string;
   enable_caching?: boolean;
 
+  volumes?: IVolumeConfig[];
   steps_defaults?: string[];
   storage_class_name?: string;
   security_context?: ISecurityContext;
@@ -64,6 +80,7 @@ export const DefaultState = {
     pipeline_description: '',
     base_image: '',
     enable_caching: true,
+    volumes: [] as IVolumeConfig[],
     steps_defaults: [] as string[],
   } as IKaleNotebookMetadata,
 };

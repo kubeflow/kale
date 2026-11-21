@@ -56,20 +56,6 @@ const SwitchLabel = styled('div')(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
-const KaleComponent = styled('div')({
-  marginTop: '16px',
-});
-
-const KaleHeaderSwitch = styled('div')({
-  marginBottom: '12px',
-});
-
-const KaleHeader = styled('p')(({ theme }) => ({
-  margin: 0,
-  fontWeight: 'bold',
-  fontSize: theme.typography.subtitle2.fontSize,
-}));
-
 interface IAdvancedSettingsProps {
   title: string;
   debug: boolean;
@@ -77,7 +63,6 @@ interface IAdvancedSettingsProps {
   dockerImageDefaultValue: string;
   dockerChange: (value: string, index?: number) => void;
   changeDebug: () => void;
-  volsPanel: React.ReactNode;
 }
 
 export const AdvancedSettings: React.FunctionComponent<
@@ -137,22 +122,6 @@ export const AdvancedSettings: React.FunctionComponent<
             inputProps={{ 'aria-label': 'Enable debug mode' }}
           />
         </ToolbarContainer>
-
-        <KaleComponent className="kale-component" key="kale-component-volumes">
-          <KaleHeaderSwitch className="kale-header-switch">
-            <KaleHeader
-              className="kale-header"
-              sx={{
-                color:
-                  (theme as any).kale?.headers?.main ||
-                  'var(--jp-ui-font-color1)',
-              }}
-            >
-              Volumes
-            </KaleHeader>
-          </KaleHeaderSwitch>
-          {props.volsPanel}
-        </KaleComponent>
       </CollapseContents>
     </CollapseContainer>
   );

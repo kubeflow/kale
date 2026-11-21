@@ -1,0 +1,69 @@
+{#
+  Per-step configuration, shared by every emission path so a `cache:`, `limit:`,
+  `label:` or `annotation:` tag behaves the same whether its notebook is
+  compiled on its own or composed. Whitespace here is load-bearing: the golden
+  DSL fixtures compare byte for byte.
+#}
+{%- macro security(task_var, security_context) %}
+{% if security_context.enabled %}
+    security_context.set_security_context(
+        task={{ task_var }},
+        run_as_user={{ security_context.run_as_user }},
+        run_as_group={{ security_context.run_as_group }},
+        run_as_non_root={{ security_context.run_as_non_root }}
+    )
+{%- endif %}
+    {{ task_var }}.set_env_variable(name="HOME", value="/tmp")
+{%- endmacro %}
+
+{%- macro caching(step, task_var, enable_caching=none) %}
+    {%- if step.config.enable_caching is not none %}
+    {{ task_var }}.set_caching_options(enable_caching={{ step.config.enable_caching }})
+    {%- elif enable_caching is not none and not enable_caching %}
+    {{ task_var }}.set_caching_options(enable_caching={{ enable_caching }})
+    {%- endif %}
+{%- endmacro %}
+
+{%- macro render(step, task_var, enable_caching=none, volumes=()) %}
+{{- caching(step, task_var, enable_caching) }}
+
+    {%- for volume in volumes | default([]) %}
+    {%- if volume.type == 'pvc' %}
+    kubernetes.mount_pvc({{ task_var }}, pvc_name="{{ volume.name }}", mount_path="{{ volume.mount_point }}")
+    {%- if volume.expose_as_env_var %}
+    {{ task_var }}.set_env_variable(name="{{ volume.name | to_kale_env_var_name }}", value="{{ volume.mount_point }}")
+    {%- endif %}
+    {%- endif %}
+    {%- endfor %}
+
+    {%- if step.config.limits %}
+    {%- for limit_key, limit_value in step.config.limits.items() %}
+    {%- if limit_key in ['nvidia.com/gpu', 'amd.com/gpu'] %}
+    {{ task_var }}.set_accelerator_type("{{ limit_key }}").set_accelerator_limit({{ limit_value }})
+    {%- elif limit_key == 'memory' %}
+    {{ task_var }}.set_memory_limit("{{ limit_value }}")
+    {%- endif %}
+    {%- endfor %}
+    {%- endif %}
+
+    {%- if step.config.labels %}
+    {%- for label_key, label_value in step.config.labels.items() %}
+    add_pod_label(task={{ task_var }}, label_key="{{ label_key }}", label_value="{{ label_value }}")
+    {%- endfor %}
+    {%- endif %}
+
+    {%- if step.config.annotations %}
+    {%- for ann_key, ann_value in step.config.annotations.items() %}
+    add_pod_annotation(task={{ task_var }}, annotation_key="{{ ann_key }}", annotation_value="{{ ann_value }}")
+    {%- endfor %}
+    {%- endif %}
+
+    {%- if step.config.secrets %}
+    {%- for env_name, secret in step.config.secrets.items() %}
+    {#- secret_name/secret_key/env_name land inside string literals below, so it's
+       K8sSecretsValidator's regexes (kale/config/validators.py) that keep quote
+       characters out of them. Don't loosen those without checking this template. #}
+    use_secret_as_env(task={{ task_var }}, secret_name="{{ secret.secret_name }}", secret_key_to_env={"{{ secret.secret_key }}": "{{ env_name }}"})
+    {%- endfor %}
+    {%- endif %}
+{% endmacro %}

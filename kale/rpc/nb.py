@@ -19,13 +19,12 @@ import shutil
 from tabulate import tabulate
 
 from kale import Compiler, NotebookProcessor, marshal
-from kale.common import astutils, kfputils, kfutils, podutils
+from kale.common import astutils, k8sutils, kfputils, kfutils, podutils
 from kale.rpc.errors import RPCInternalError, RPCUnhandledError
 from kale.rpc.log import create_adapter
 
 KALE_MARSHAL_DIR_POSTFIX = ".kale.marshal.dir"
 KALE_PIPELINE_STEP_ENV = "KALE_PIPELINE_STEP"
-KALE_SNAPSHOT_FINAL_ENV = "KALE_SNAPSHOT_FINAL"
 
 logger = create_adapter(logging.getLogger(__name__))
 
@@ -203,18 +202,8 @@ def explore_notebook(request, source_notebook_path):
     step_name = os.getenv(KALE_PIPELINE_STEP_ENV, None)
     kale_marshal_dir = _get_kale_marshal_dir(source_notebook_path)
 
-    final_snapshot = str(os.getenv(KALE_SNAPSHOT_FINAL_ENV, "false")).lower()
-    if final_snapshot == "true":
-        final_snapshot = True
-    elif final_snapshot == "false":
-        final_snapshot = False
-    else:
-        raise ValueError(
-            f"Env {KALE_SNAPSHOT_FINAL_ENV}: Expected 'true' or 'false', but got: {final_snapshot}"
-        )
-
     if step_name and os.path.exists(kale_marshal_dir):
-        return {"is_exploration": True, "step_name": step_name, "final_snapshot": final_snapshot}
+        return {"is_exploration": True, "step_name": step_name}
     return {"is_exploration": False, "step_name": ""}
 
 
@@ -241,6 +230,74 @@ def get_namespace(request):
     namespace = podutils.get_namespace()
     request.log.info("Notebook's namespace is '%s'", namespace)
     return namespace
+
+
+def list_pvcs(request):
+    """List PersistentVolumeClaims available in the current namespace.
+
+    Returns a sorted list of dicts with PVC info:
+    ``{"name": <pvc-name>, "access_modes": ["ReadWriteOnce", ...]}``
+
+    On any exception (e.g. no cluster access, missing service-account token)
+    returns an empty list so the UI combobox degrades gracefully.
+    """
+    log = request.log if hasattr(request, "log") else logger
+    try:
+        namespace = podutils.get_namespace()
+        pvc_list = k8sutils.get_v1_client().list_namespaced_persistent_volume_claim(namespace)
+        pvcs = sorted(
+            [
+                {
+                    "name": pvc.metadata.name,
+                    "access_modes": list(pvc.spec.access_modes or []),
+                }
+                for pvc in pvc_list.items
+            ],
+            key=lambda p: p["name"],
+        )
+        log.info("Found %d PVC(s) in namespace '%s'", len(pvcs), namespace)
+        return pvcs
+    except Exception as e:
+        log.warning("Could not list PVCs, returning empty list. Reason: %s", e)
+        return []
+
+
+def list_notebook_volumes(request):
+    """List PVCs currently mounted on the notebook pod.
+
+    Returns a sorted list of dicts:
+    ``{"name": <pvc-name>, "mount_point": <path>, "access_modes": [...]}``
+
+    Returns an empty list on any error so the UI dialog degrades gracefully.
+    """
+    log = request.log if hasattr(request, "log") else logger
+    try:
+        namespace = podutils.get_namespace()
+        pod_name = podutils.get_pod_name()
+        pod = podutils.get_pod(pod_name, namespace)
+
+        pvc_by_vol_name = {}
+        for vol in pod.spec.volumes or []:
+            if vol.persistent_volume_claim:
+                pvc_by_vol_name[vol.name] = vol.persistent_volume_claim.claim_name
+
+        results = {}
+        for container in pod.spec.containers or []:
+            for mount in container.volume_mounts or []:
+                if mount.name in pvc_by_vol_name and mount.name not in results:
+                    pvc_name = pvc_by_vol_name[mount.name]
+                    results[mount.name] = {
+                        "name": pvc_name,
+                        "mount_point": mount.mount_path,
+                        "access_modes": k8sutils.get_pvc_access_modes(pvc_name, namespace),
+                    }
+
+        volumes = sorted(results.values(), key=lambda v: v["name"])
+        log.info("Found %d PVC mount(s) on pod '%s'", len(volumes), pod_name)
+        return volumes
+    except Exception as e:
+        log.warning("Could not list notebook pod volumes. Reason: %s", e)
+        return []
 
 
 def get_security_context_defaults(request):

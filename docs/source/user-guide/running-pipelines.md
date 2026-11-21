@@ -103,6 +103,7 @@ A few environment variables are useful when running Kale:
 | ------------------------ | ------------------------------------------------------------------------------------------ |
 | `KF_PIPELINES_ENDPOINT`  | Default KFP API endpoint if `--kfp_host` is not set.                                       |
 | `KF_PIPELINES_UI_ENDPOINT` | KFP UI URL used when Kale renders run links (standard KFP UI pattern).                   |
+| `KALE_KFP_NAMESPACE`     | Default Kubernetes namespace for KFP API operations. Used when no namespace is set via an explicit argument or the saved config; falls back to `kubeflow` when unset. |
 | `KALE_UPLOAD_LINK`       | Custom URL for pipeline upload links. Overrides the default KFP UI pattern.                |
 | `KALE_RUN_LINK`          | Custom URL for pipeline run links. Overrides the default KFP UI pattern.                   |
 | `KALE_PIP_INDEX_URLS`    | Comma-separated pip index URLs baked into the generated components (used for local dev).  |

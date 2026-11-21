@@ -21,7 +21,6 @@ settings such as the pipeline name, KFP host, volumes, and Katib experiments.
 from collections.abc import Iterable
 import copy
 import logging
-import os
 
 import networkx as nx
 
@@ -46,6 +45,8 @@ class VolumeConfig(Config):
 
     name = Field(type=str, required=True, validators=[validators.K8sNameValidator])
     mount_point = Field(type=str, required=True)
+    # Accepted for forward compatibility — snapshot support is not yet implemented
+    # in the KFP v2 path. Fields are parsed and stored but have no effect on compilation.
     snapshot = Field(type=bool, default=False)
     snapshot_name = Field(type=str)
     size = Field(type=int)  # fixme: validation for this field?
@@ -56,6 +57,10 @@ class VolumeConfig(Config):
     volume_access_mode = Field(
         type=str, validators=[validators.IsLowerValidator, validators.VolumeAccessModeValidator]
     )
+    # When True the compiler injects a KALE_VOLUME_<NAME> env var into every
+    # pipeline step alongside the mount_pvc call, making the mount path
+    # discoverable at runtime without hard-coding it.
+    expose_as_env_var = Field(type=bool, default=False)
 
     def _parse_annotations(self):
         # Convert annotations to a {k: v} dictionary
@@ -133,7 +138,6 @@ class PipelineConfig(Config):
     katib_run = Field(type=bool, default=False)
     katib_metadata = Field(type=KatibConfig)
     abs_working_dir = Field(type=str, default="")
-    marshal_volume = Field(type=bool, default=True)
     marshal_path = Field(type=str, default="/tmp/marshal")
     steps_defaults = Field(type=dict, default={})
     kfp_host = Field(type=str)
@@ -157,7 +161,6 @@ class PipelineConfig(Config):
         self._set_volume_access_mode()
         self._sort_volumes()
         self._set_abs_working_dir()
-        self._set_marshal_path()
         self._set_security_context()
 
     def _randomize_pipeline_name(self):
@@ -194,21 +197,6 @@ class PipelineConfig(Config):
     def _set_abs_working_dir(self):
         if not self.abs_working_dir:
             self.abs_working_dir = utils.abs_working_dir(self.source_path)
-
-    def _set_marshal_path(self):
-        # Check if the workspace directory is under a mounted volume.
-        # If so, marshal data into a folder in that volume,
-        # otherwise create a new volume and mount it at /tmp/marshal
-        wd = os.path.realpath(self.abs_working_dir)
-        # get the volumes for which the working directory is a sub-path of
-        # the mount point
-        vols = list(filter(lambda x: wd.startswith(x.mount_point), self.volumes))
-        # if we found any, then set marshal directory inside working directory
-        if len(vols) > 0:
-            basename = os.path.basename(self.source_path)
-            marshal_dir = f".{basename}.kale.marshal.dir"
-            self.marshal_volume = False
-            self.marshal_path = os.path.join(wd, marshal_dir)
 
     def _set_security_context(self):
         """Initialize security context from env vars if not set from metadata.

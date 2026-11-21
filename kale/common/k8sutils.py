@@ -57,6 +57,28 @@ def get_co_client():
     return _k8s_co_client
 
 
+def get_pvc_access_modes(pvc_name: str, namespace: str) -> list[str]:
+    """Return the access modes of a PVC, or an empty list on any error.
+
+    This is intentionally best-effort: callers (the UI RPC and the runtime
+    warning emitted into each pipeline step) must not fail if the service
+    account lacks ``get`` permission on PVCs or the cluster is unreachable.
+
+    Args:
+        pvc_name: Name of the PersistentVolumeClaim to inspect.
+        namespace: Kubernetes namespace to look in.
+
+    Returns:
+        A list of access mode strings, e.g. ``["ReadWriteOnce"]``, or ``[]``
+        when the PVC cannot be fetched for any reason.
+    """
+    try:
+        pvc = get_v1_client().read_namespaced_persistent_volume_claim(pvc_name, namespace)
+        return list(pvc.spec.access_modes or [])
+    except Exception:
+        return []
+
+
 def annotate_object(group, version, plural, name, namespace, annotations):
     """Annotate a custom Kubernetes object."""
     patch = {

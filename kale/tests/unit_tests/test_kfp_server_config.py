@@ -552,3 +552,136 @@ def test_k8s_sa_token_path_env_var_used_when_no_config(tmpdir):
         assert result.credentials is not None
         assert result.cookies is None
         assert result.existing_token is None
+
+
+# ---------------------------------------------------------------------------
+# KALE_KFP_NAMESPACE support (issue #798)
+#
+# Resolution order for the KFP client namespace (highest priority first):
+#   1. explicit namespace= argument to get_kfp_client()
+#   2. "namespace" in the JSON config file
+#   3. KALE_KFP_NAMESPACE environment variable
+#   4. the canonical in-code default (kfp_server_config.DEFAULT_NAMESPACE)
+# ---------------------------------------------------------------------------
+
+
+def test_get_default_namespace_unset_env():
+    """With KALE_KFP_NAMESPACE unset, the canonical in-code default is used."""
+    with mock.patch.dict(os.environ, {}, clear=True):
+        assert kfp_server_config.get_default_namespace() == kfp_server_config.DEFAULT_NAMESPACE
+
+
+def test_get_default_namespace_env_override():
+    """KALE_KFP_NAMESPACE overrides the canonical in-code default."""
+    with mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "ml-pipelines"}):
+        assert kfp_server_config.get_default_namespace() == "ml-pipelines"
+
+
+def test_load_config_no_file_uses_env_namespace(tmpdir):
+    """When no config file exists, KALE_KFP_NAMESPACE sets the namespace."""
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")
+
+    with (
+        mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "ml-pipelines"}),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        config = kfp_server_config.load_config()
+
+    assert config.namespace == "ml-pipelines"
+
+
+def test_load_config_file_namespace_wins_over_env(tmpdir):
+    """A namespace in the config file takes precedence over the env var."""
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")
+    with open(config_path, "w") as f:
+        json.dump({"namespace": "from-file"}, f)
+
+    with (
+        mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "from-env"}),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        config = kfp_server_config.load_config()
+
+    assert config.namespace == "from-file"
+
+
+def test_load_config_file_without_namespace_falls_back_to_env(tmpdir):
+    """A config file that omits 'namespace' still honours KALE_KFP_NAMESPACE."""
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")
+    with open(config_path, "w") as f:
+        json.dump({"host": "http://localhost:8080"}, f)
+
+    with (
+        mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "from-env"}),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        config = kfp_server_config.load_config()
+
+    assert config.host == "http://localhost:8080"
+    assert config.namespace == "from-env"
+
+
+@mock.patch("kale.common.kfp_client_factory.kfp.Client")
+@mock.patch("kale.common.kfp_authenticator.get_authenticator")
+def test_get_kfp_client_uses_env_namespace(mock_get_auth, mock_client, tmpdir):
+    """get_kfp_client() picks up KALE_KFP_NAMESPACE when nothing else is set."""
+    from kale.common.kfp_authenticator import AuthResult
+
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")  # no file created
+
+    mock_authenticator = mock.Mock()
+    mock_authenticator.authenticate.return_value = AuthResult()
+    mock_get_auth.return_value = mock_authenticator
+
+    with (
+        mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "ml-pipelines"}),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        kfp_client_factory.get_kfp_client()
+
+    _, kwargs = mock_client.call_args
+    assert kwargs["namespace"] == "ml-pipelines"
+
+
+@mock.patch("kale.common.kfp_client_factory.kfp.Client")
+@mock.patch("kale.common.kfp_authenticator.get_authenticator")
+def test_get_kfp_client_param_overrides_env_namespace(mock_get_auth, mock_client, tmpdir):
+    """An explicit namespace= argument wins over KALE_KFP_NAMESPACE."""
+    from kale.common.kfp_authenticator import AuthResult
+
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")  # no file created
+
+    mock_authenticator = mock.Mock()
+    mock_authenticator.authenticate.return_value = AuthResult()
+    mock_get_auth.return_value = mock_authenticator
+
+    with (
+        mock.patch.dict(os.environ, {"KALE_KFP_NAMESPACE": "from-env"}),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        kfp_client_factory.get_kfp_client(namespace="explicit-namespace")
+
+    _, kwargs = mock_client.call_args
+    assert kwargs["namespace"] == "explicit-namespace"
+
+
+@mock.patch("kale.common.kfp_client_factory.kfp.Client")
+@mock.patch("kale.common.kfp_authenticator.get_authenticator")
+def test_get_kfp_client_default_namespace_when_env_unset(mock_get_auth, mock_client, tmpdir):
+    """With no file, no param and no env var, the canonical default is used."""
+    from kale.common.kfp_authenticator import AuthResult
+
+    config_path = os.path.join(tmpdir, "kfp_server_config.json")  # no file created
+
+    mock_authenticator = mock.Mock()
+    mock_authenticator.authenticate.return_value = AuthResult()
+    mock_get_auth.return_value = mock_authenticator
+
+    with (
+        mock.patch.dict(os.environ, {}, clear=True),
+        mock.patch("kale.config.kfp_server_config.get_config_path", return_value=config_path),
+    ):
+        kfp_client_factory.get_kfp_client()
+
+    _, kwargs = mock_client.call_args
+    assert kwargs["namespace"] == kfp_server_config.DEFAULT_NAMESPACE

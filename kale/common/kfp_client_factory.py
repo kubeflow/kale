@@ -52,7 +52,10 @@ def get_kfp_client(
             - {"env_var": "VAR_NAME"}: Read credential from environment variable
             - {"file_path": "/path/to/file"}: Read credential from file
             - {"token_path": "/path/to/token"}: K8s SA token path (SA auth only)
-        namespace: Kubernetes namespace
+        namespace: Kubernetes namespace for KFP API operations. If not
+            provided, falls back to the saved config, then the
+            KALE_KFP_NAMESPACE environment variable, then the canonical
+            in-code default (see kfp_server_config.get_default_namespace).
         ssl_ca_cert: Path to CA certificate file
 
     Returns:
@@ -61,11 +64,15 @@ def get_kfp_client(
     # Load saved configuration
     config = kfp_server_config.load_config()
 
-    # Use parameter if provided, otherwise fall back to config
+    # Use parameter if provided, otherwise fall back to config.
+    # Note: config.namespace is already resolved by load_config() to a concrete
+    # value (config file -> KALE_KFP_NAMESPACE env var -> canonical default), so
+    # there is no hardcoded namespace fallback here anymore. An explicit
+    # `namespace=` argument still wins over everything.
     host = host or config.host
     auth_type = auth_type or config.auth_type or "none"
     auth_config = auth_config or config.auth_config or {}
-    namespace = namespace or config.namespace or "kubeflow"
+    namespace = namespace or config.namespace
     ssl_ca_cert = ssl_ca_cert or config.ssl_ca_cert
 
     # Create credentials at runtime using authenticator

@@ -27,14 +27,17 @@ import { FormControlLabel, Link, Switch } from '@mui/material';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { theme } from '../Theme';
 import { Input } from '../components/Input';
+import { VolumesPanel } from '../components/VolumesPanel';
 import { KaleEmptyState } from './KaleEmptyState';
 import { KFPStatusBadge } from '../components/KFPStatusBadge';
 import kaleLogo from '../../style/icons/kale.svg';
 import { useKfpStatus } from './hooks/useKfpStatus';
+import { useActiveNotebook } from './hooks/useActiveNotebook';
 import { useNotebookMetadata } from './hooks/useNotebookMetadata';
 import { useDeployment } from './hooks/useDeployment';
 import { setLeftPanelCallbacks } from '../commands/kaleToolbar';
 import { resolveDefaultBaseImage } from '../lib/resolveDefaultBaseImage';
+import { RuntimeImages } from '../lib/runtimeImages';
 
 import {
   DeployType,
@@ -44,8 +47,10 @@ import {
   DefaultState,
   NEW_EXPERIMENT,
   PIPELINE_NAME_MAX_LENGTH,
+  IVolumeConfig,
+  isValidExperimentName,
 } from './LeftPanelTypes';
-export type { DeployType, IExperiment, IKaleNotebookMetadata };
+export type { DeployType, IExperiment, IKaleNotebookMetadata, IVolumeConfig };
 export { DefaultState, NEW_EXPERIMENT };
 
 interface IProps {
@@ -56,7 +61,10 @@ interface IProps {
   kernel: Kernel.IKernelConnection;
   enableKaleByDefault: boolean;
   autoSaveOnCompileOrRun: boolean;
+  enableComposableNotebooks: boolean;
+  enableVolumes: boolean;
   defaultBaseImageSetting: string;
+  runtimeImages: RuntimeImages;
   envDefaultBaseImage: string;
   securityContext: ISecurityContext;
   outputPath: string;
@@ -71,7 +79,10 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     docManager,
     enableKaleByDefault,
     autoSaveOnCompileOrRun,
+    enableComposableNotebooks,
+    enableVolumes,
     defaultBaseImageSetting,
+    runtimeImages,
     envDefaultBaseImage,
     securityContext,
     outputPath,
@@ -83,6 +94,8 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
   );
 
   const kfpStatus = useKfpStatus(kernel, backend);
+
+  const activeNotebook = useActiveNotebook(tracker);
 
   const notebookMeta = useNotebookMetadata({
     tracker,
@@ -154,15 +167,26 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     } else {
       experimentInputValue = selectedExperiments[0].name;
     }
+  } else if (
+    notebookMeta.metadata.experiment.name !== '' ||
+    notebookMeta.metadata.experiment_name !== ''
+  ) {
+    // No experiment list is available (e.g. KFP disconnected or still loading),
+    // but the notebook has a saved experiment. Show it from the notebook
+    // metadata so the field is populated regardless of KFP state (#965).
+    experimentInputSelected = NEW_EXPERIMENT.id;
+    experimentInputValue =
+      notebookMeta.metadata.experiment.name !== ''
+        ? notebookMeta.metadata.experiment.name
+        : notebookMeta.metadata.experiment_name;
   }
   const pipelineNameValid =
     /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(
       notebookMeta.metadata.pipeline_name,
     ) && notebookMeta.metadata.pipeline_name.length <= PIPELINE_NAME_MAX_LENGTH;
-  const experimentNameRegex = /^[a-z]([-a-z0-9]*[a-z0-9])?$/;
   const experimentNameValid =
     experimentInputSelected !== NEW_EXPERIMENT.id ||
-    experimentNameRegex.test(experimentInputValue);
+    isValidExperimentName(experimentInputValue);
 
   const experiment_name_input = (
     <ExperimentInput
@@ -215,8 +239,6 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
     />
   );
 
-  const activeNotebook = tracker.currentWidget;
-
   return (
     <ThemeProvider theme={theme}>
       <div className={'kubeflow-widget'} key="kale-widget">
@@ -246,6 +268,8 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
                 onMetadataEnable={notebookMeta.setIsEnabled}
                 notebook={activeNotebook}
                 resolvedDefaultBaseImage={resolvedDefaultBaseImage}
+                runtimeImages={runtimeImages}
+                composableNotebooks={enableComposableNotebooks}
                 initialChecked={notebookMeta.isEnabled}
               />
             ) : (
@@ -292,7 +316,37 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
               {pipeline_desc_input}
               {enable_caching_toggle}
             </div>
+          </div>
 
+          {enableVolumes && (
+            <div
+              className={
+                'kale-component ' +
+                (notebookMeta.isEnabled && activeNotebook ? '' : 'hidden')
+              }
+            >
+              <div>
+                <p
+                  className="kale-header"
+                  style={{ color: theme.kale.headers.main }}
+                >
+                  Volumes
+                </p>
+              </div>
+              <div className={'input-container'}>
+                <VolumesPanel
+                  volumes={notebookMeta.metadata.volumes ?? []}
+                  updateVolumes={notebookMeta.updateVolumes}
+                  notebook={activeNotebook}
+                  kernel={kernel}
+                />
+              </div>
+            </div>
+          )}
+
+          <div
+            className={notebookMeta.isEnabled && activeNotebook ? '' : 'hidden'}
+          >
             <div className="kale-settings-notice">
               <SettingsOutlinedIcon
                 className="kale-settings-notice-icon"
@@ -311,15 +365,6 @@ export const KubeflowKaleLeftPanel: React.FC<IProps> = props => {
                 </Link>
               </span>
             </div>
-          </div>
-
-          <div
-            className={
-              'kale-component ' +
-              (notebookMeta.isEnabled && activeNotebook ? '' : 'hidden')
-            }
-          >
-            {' '}
           </div>
         </div>
         <div

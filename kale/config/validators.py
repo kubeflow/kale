@@ -180,6 +180,64 @@ class K8sLabelsValidator(DictValidator):
     value_validator = TypeValidator(str)
 
 
+class EnvVarNameValidator(RegexValidator):
+    """Validates an environment variable name."""
+
+    regex = r"^[a-zA-Z_][a-zA-Z0-9_]*$"
+    error_message = "Not a valid environment variable name"
+
+
+class K8sSecretNameValidator(RegexValidator):
+    """Validates the name of a K8s Secret.
+
+    Secret names are DNS *subdomain* names (dot-separated DNS labels), unlike
+    most other K8s resource names validated by `K8sNameValidator`, which are
+    plain DNS *labels* and so reject dots.
+    """
+
+    _label = r"[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+    regex = rf"^{_label}(\.{_label})*$"
+    error_message = "Not a valid K8s Secret name"
+
+
+class K8sSecretKeyValidator(RegexValidator):
+    """Validates a key inside a K8s Secret's data."""
+
+    regex = r"^[-._a-zA-Z0-9]+$"
+    error_message = "Not a valid K8s Secret key"
+
+
+# Keys of a `{secret_name, secret_key}` mapping (see K8sSecretRefValidator),
+# shared with nbprocessor.py so the two can't disagree on the dict shape.
+SECRET_NAME_KEY = "secret_name"
+SECRET_KEY_KEY = "secret_key"
+
+
+class K8sSecretRefValidator(Validator):
+    """Validates a single `{secret_name, secret_key}` mapping."""
+
+    def _validate(self, value: dict):
+        if not isinstance(value, dict) or set(value) != {
+            SECRET_NAME_KEY,
+            SECRET_KEY_KEY,
+        }:
+            raise ValueError(
+                f"Secret reference must be a dict with '{SECRET_NAME_KEY}' and "
+                f"'{SECRET_KEY_KEY}' keys"
+            )
+        K8sSecretNameValidator()(value[SECRET_NAME_KEY])
+        K8sSecretKeyValidator()(value[SECRET_KEY_KEY])
+
+
+class K8sSecretsValidator(DictValidator):
+    """Validates a K8s secrets dictionary (env var name -> secret reference)."""
+
+    # NOTE: instantiated (not a bare class) so the key is actually checked -
+    # see DictValidator._validate, which calls key_validator(k) directly.
+    key_validator = EnvVarNameValidator()
+    value_validator = K8sSecretRefValidator()
+
+
 class VolumeTypeValidator(EnumValidator):
     """Validates the type of a Volume."""
 
@@ -219,7 +277,7 @@ class OutputPathValidator(Validator):
 
         project_dir = Path.cwd().resolve()
         resolved = (project_dir / value).resolve()
-        if not str(resolved).startswith(str(project_dir)):
+        if not resolved.is_relative_to(project_dir):
             raise ValueError(
                 f"'{value}' is not a valid output directory. The path must be"
                 " relative to the project directory (e.g. 'pipelines/output')."

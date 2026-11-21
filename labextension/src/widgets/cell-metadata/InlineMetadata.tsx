@@ -22,6 +22,9 @@ import {
 } from './CellMetadataEditor';
 import EditIcon from '@mui/icons-material/Edit';
 import { CellMetadataContext } from '../../lib/CellMetadataContext';
+import { ISecretRef } from '../../lib/TagsUtils';
+import { getRuntimeImageName, RuntimeImages } from '../../lib/runtimeImages';
+import { getGpuType } from './dialogs/sections/GpuSection';
 
 interface IProps {
   stepName: string;
@@ -29,8 +32,10 @@ interface IProps {
   stepDependencies: string[];
   limits: { [id: string]: string };
   baseImage?: string;
+  runtimeImages: RuntimeImages;
   enableCaching?: boolean;
   generateHtmlReport?: boolean;
+  secrets?: { [envName: string]: ISecretRef };
   cellElement: any;
   cellIndex: number;
   resolvedDefaultBaseImage: string;
@@ -59,8 +64,10 @@ export const InlineMetadata: React.FC<IProps> = ({
   stepDependencies,
   limits,
   baseImage,
+  runtimeImages,
   enableCaching,
   generateHtmlReport,
+  secrets,
   cellElement,
   cellIndex,
   resolvedDefaultBaseImage,
@@ -70,6 +77,10 @@ export const InlineMetadata: React.FC<IProps> = ({
 
   const isMergedCell = !stepName;
   const isReserved = RESERVED_CELL_NAMES.includes(stepName);
+  const isNotebookRef = stepName.startsWith('notebook:');
+  const notebookRefName = isNotebookRef
+    ? stepName.replace('notebook:', '')
+    : '';
   const cellTypeClass = isReserved ? 'kale-reserved-cell' : '';
   const name = stepName || previousStepName;
   const color = name ? ColorUtils.getColor(name) : '';
@@ -134,7 +145,8 @@ export const InlineMetadata: React.FC<IProps> = ({
     context.onEditorVisibilityChange(true);
   };
 
-  const gpuType = Object.keys(limits)[0] || undefined;
+  // Only GPU limits are a GPU request; a cell can also carry e.g. `limit:memory:...`
+  const gpuType = getGpuType(limits);
   const limitsText = gpuType ? (
     <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
       GPU request: {gpuType + ' - '}
@@ -142,9 +154,36 @@ export const InlineMetadata: React.FC<IProps> = ({
     </p>
   ) : null;
 
-  const baseImageText = baseImage ? (
+  const memoryLimitText = limits['memory'] ? (
     <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
-      Base Image: {baseImage}
+      Memory limit: {limits['memory']}
+    </p>
+  ) : null;
+
+  const baseImageName = baseImage
+    ? getRuntimeImageName(runtimeImages, baseImage)
+    : undefined;
+  const baseImageText = baseImage ? (
+    <p className="kale-inline-base-image">
+      <span className="kale-inline-base-image-label">Base Image:</span>
+      <span
+        className={`kale-inline-base-image-details${baseImageName ? ' has-name' : ''}`}
+      >
+        {baseImageName && (
+          <>
+            <strong
+              className="kale-inline-base-image-name"
+              title={baseImageName}
+            >
+              {baseImageName}
+            </strong>
+            <span className="kale-inline-base-image-separator">·</span>
+          </>
+        )}
+        <span className="kale-inline-base-image-reference" title={baseImage}>
+          {baseImage}
+        </span>
+      </span>
     </p>
   ) : null;
 
@@ -162,18 +201,30 @@ export const InlineMetadata: React.FC<IProps> = ({
       </p>
     ) : null;
 
-  const details = isReserved ? null : (
-    <>
-      {dependencies.length > 0 ? (
-        <p style={{ fontStyle: 'italic', margin: '0 5px' }}>depends on: </p>
-      ) : null}
-      {dependencies}
-      {limitsText}
-      {baseImageText}
-      {cacheText}
-      {reportText}
-    </>
-  );
+  const secretEnvNames = Object.keys(secrets || {});
+  const secretsText =
+    secretEnvNames.length > 0 ? (
+      <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
+        Secrets: {secretEnvNames.join(', ')}
+      </p>
+    ) : null;
+
+  // a `notebook:` reference has no step details to show
+  const details =
+    isReserved || isNotebookRef ? null : (
+      <>
+        {dependencies.length > 0 ? (
+          <p style={{ fontStyle: 'italic', margin: '0 5px' }}>depends on: </p>
+        ) : null}
+        {dependencies}
+        {limitsText}
+        {memoryLimitText}
+        {baseImageText}
+        {cacheText}
+        {reportText}
+        {secretsText}
+      </>
+    );
 
   return (
     <div ref={wrapperRef} className={'kale-inline-cell-metadata-container'}>
@@ -185,7 +236,9 @@ export const InlineMetadata: React.FC<IProps> = ({
         {isReserved ? (
           ''
         ) : (
-          <p style={{ fontStyle: 'italic', marginRight: '5px' }}>step: </p>
+          <p style={{ fontStyle: 'italic', marginRight: '5px' }}>
+            {isNotebookRef ? 'notebook: ' : 'step: '}
+          </p>
         )}
 
         <Tooltip
@@ -194,14 +247,17 @@ export const InlineMetadata: React.FC<IProps> = ({
           title={
             isReserved
               ? RESERVED_CELL_NAMES_HELP_TEXT[stepName]
-              : 'This cell starts the pipeline step: ' + stepName
+              : isNotebookRef
+                ? 'This cell references another notebook as a sub-pipeline: ' +
+                  notebookRefName
+                : 'This cell starts the pipeline step: ' + stepName
           }
         >
           <Chip
             className={`kale-chip ${cellTypeClass}`}
             style={{ backgroundColor: `#${color}` }}
             key={stepName}
-            label={stepName}
+            label={isNotebookRef ? notebookRefName : stepName}
           />
         </Tooltip>
 

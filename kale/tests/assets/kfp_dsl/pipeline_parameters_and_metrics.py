@@ -1,7 +1,7 @@
 import json
 import kfp.dsl as kfp_dsl
 from kfp.dsl import Input, Output, Dataset, HTML, Metrics, Artifact, Model
-from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context
+from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context, use_secret_as_env
 
 
 @kfp_dsl.component(
@@ -156,12 +156,7 @@ def sum_matrix_step(sum_matrix_html_report: Output[HTML], kale_metrics_artifact:
     name='hp-test',
     description=''
 )
-def auto_generated_pipeline(
-    d1: int = 5,
-    d2: int = 6,
-    booltest: bool = True,
-    strtest: str = "test"
-):
+def auto_generated_pipeline(d1: int = 5, d2: int = 6, booltest: bool = True, strtest: str = 'test'):
     """Auto-generated pipeline function."""
 
     create_matrix_task = create_matrix_step(
@@ -180,6 +175,7 @@ def auto_generated_pipeline(
     create_matrix_task.set_env_variable(name="HOME", value="/tmp")
 
     create_matrix_task.set_display_name("create-matrix-step")
+
     create_matrix_task.set_caching_options(enable_caching=True)
     create_matrix_task.set_accelerator_type(
         "nvidia.com/gpu").set_accelerator_limit(2)
@@ -199,18 +195,17 @@ def auto_generated_pipeline(
         run_as_non_root=True
     )
     sum_matrix_task.set_env_variable(name="HOME", value="/tmp")
-
     sum_matrix_task.after(create_matrix_task)
 
     sum_matrix_task.set_display_name("sum-matrix-step")
+
     sum_matrix_task.set_caching_options(enable_caching=False)
 
 
 if __name__ == "__main__":
     from kfp import compiler
 
-    pipeline_filename = auto_generated_pipeline.__name__ + '.yaml'
-    compiler.Compiler().compile(auto_generated_pipeline, pipeline_filename)
+    compiler.Compiler().compile(auto_generated_pipeline, "hp-test.yaml")
 
-    print(f"Pipeline compiled to {pipeline_filename}")
+    print("Pipeline compiled to hp-test.yaml")
     print("To run, upload this YAML to your KFP v2 instance or use kfp.Client().create_run_from_pipeline_func.")

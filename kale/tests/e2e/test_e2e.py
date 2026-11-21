@@ -34,6 +34,14 @@ EXAMPLES_DIR = os.path.join(THIS_DIR, "../../../examples/")
             os.path.join(THIS_DIR, "../assets/notebooks/pipeline_parameters_and_metrics.ipynb"),
             os.path.join(THIS_DIR, "../assets/kfp_dsl/", "pipeline_parameters_and_metrics.py"),
         ),
+        (
+            os.path.join(THIS_DIR, "../assets/notebooks/mount_pvc.ipynb"),
+            os.path.join(THIS_DIR, "../assets/kfp_dsl/", "mount_pvc.py"),
+        ),
+        (
+            os.path.join(THIS_DIR, "../assets/notebooks/mount_pvc_env_var.ipynb"),
+            os.path.join(THIS_DIR, "../assets/kfp_dsl/", "mount_pvc_env_var.py"),
+        ),
     ],
 )
 @mock.patch("kale.compiler.KALE_VERSION", new="0+unknown")

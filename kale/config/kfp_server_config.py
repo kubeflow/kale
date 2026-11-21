@@ -22,6 +22,32 @@ from kale.config.config import Config, Field
 
 log = logging.getLogger(__name__)
 
+# The single, canonical default namespace used for KFP API operations when the
+# user has not configured one anywhere else. This is the *last* fallback in the
+# resolution order below.
+DEFAULT_NAMESPACE = "kubeflow"
+
+# Environment variable that lets operators/users set the default KFP namespace
+# without editing the JSON config file. Handy for shared notebook/CI images that
+# run against clusters where KFP lives in different namespaces
+# (e.g. "kubeflow" vs "kubeflow-pipelines" vs a custom one).
+KFP_NAMESPACE_ENV_VAR = "KALE_KFP_NAMESPACE"
+
+
+def get_default_namespace() -> str:
+    """Return the default KFP namespace to use when none is explicitly set.
+
+    Resolution order (highest priority first):
+    1. The ``KALE_KFP_NAMESPACE`` environment variable, if set and non-empty.
+    2. The canonical in-code default (``DEFAULT_NAMESPACE``).
+
+    Note this is only the *default*. An explicit value in the JSON config file,
+    or an explicit ``namespace=`` argument to ``get_kfp_client()``, still takes
+    precedence over whatever this function returns (see ``load_config`` and
+    ``kfp_client_factory.get_kfp_client``).
+    """
+    return os.getenv(KFP_NAMESPACE_ENV_VAR) or DEFAULT_NAMESPACE
+
 
 class KFPServerConfig(Config):
     """Configuration for KFP server connection.
@@ -30,13 +56,29 @@ class KFPServerConfig(Config):
     - env_var: Name of environment variable containing the credential
     - file_path: Path to file containing the credential
     - token_path: Path to K8s service account token (for SA auth)
+
+    The ``namespace`` field defaults to ``None`` so that a value coming from the
+    JSON config file is left untouched, while an unset namespace is resolved in
+    ``_postprocess`` via :func:`get_default_namespace` (which honours
+    ``KALE_KFP_NAMESPACE`` before falling back to the canonical default).
     """
 
     host = Field(type=str, default=None)
     auth_type = Field(type=str, default="none")
     auth_config = Field(type=dict, default=None)
-    namespace = Field(type=str, default="kubeflow")
+    namespace = Field(type=str, default=None)
     ssl_ca_cert = Field(type=str, default=None)
+
+    def _postprocess(self):
+        """Resolve the default namespace when the user did not set one.
+
+        Runs after validation on every construction, so callers (``load_config``,
+        ``get_kfp_client``, direct instantiation) all get a concrete namespace
+        without repeating the fallback logic. A namespace from the config file or
+        an explicit argument is already set and left untouched.
+        """
+        if self.namespace is None:
+            self.namespace = get_default_namespace()
 
 
 def get_config_path() -> str:
@@ -57,7 +99,10 @@ def load_config() -> KFPServerConfig:
     """Load KFP server configuration from disk.
 
     Returns:
-        KFPServerConfig instance. If no config file exists, returns default config.
+        KFPServerConfig instance. If no config file exists, returns default
+        config. In all cases the ``namespace`` is resolved to a concrete value
+        using (in priority order) the config file, the ``KALE_KFP_NAMESPACE``
+        environment variable, then the canonical in-code default.
     """
     config_path = get_config_path()
     if not os.path.exists(config_path):

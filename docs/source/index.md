@@ -115,6 +115,7 @@ getting-started/quickstart
 concepts/index
 concepts/cell-types
 concepts/data-passing
+concepts/composition
 concepts/compilation
 ```
 
@@ -124,6 +125,7 @@ concepts/compilation
 
 user-guide/annotating-notebooks
 user-guide/pipeline-parameters
+user-guide/volumes
 user-guide/running-pipelines
 user-guide/troubleshooting
 ```

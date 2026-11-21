@@ -23,10 +23,14 @@ import {
   Tab,
   Tabs,
 } from '@mui/material';
+import { ISecretRef } from '../../../lib/TagsUtils';
 import { BaseImageSection } from './sections/BaseImageSection';
-import { GpuSection, ILimitAction } from './sections/GpuSection';
+import { GpuSection } from './sections/GpuSection';
+import { ILimitAction } from './sections/limits';
+import { MemorySection } from './sections/MemorySection';
 import { CacheSection } from './sections/CacheSection';
 import { ReportSection } from './sections/ReportSection';
+import { ISecretRow, SecretsSection } from './sections/SecretsSection';
 
 interface IStepConfigDialogProps {
   open: boolean;
@@ -36,6 +40,7 @@ interface IStepConfigDialogProps {
   baseImage?: string;
   resolvedDefaultBaseImage: string;
   onUpdateBaseImage: (value: string) => void;
+  runtimeImages: Record<string, string>;
   // GPU / limits
   limits: { [id: string]: string };
   updateLimits: (actions: ILimitAction[]) => void;
@@ -45,6 +50,9 @@ interface IStepConfigDialogProps {
   // HTML report
   generateHtmlReport?: boolean;
   onUpdateHtmlReport: (value: boolean | undefined) => void;
+  // Secrets
+  secrets: { [envName: string]: ISecretRef };
+  updateSecrets: (secrets: { [envName: string]: ISecretRef }) => void;
 }
 
 /**
@@ -57,10 +65,18 @@ interface IStepConfigDialogProps {
 export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
   const [activeTab, setActiveTab] = React.useState(0);
 
+  // Holds an in-progress Secrets row across tab switches (see SecretsSection's
+  // draftRowsRef doc). The dialog is modal, so it's never possible to jump to
+  // a different step while it's open - closing is the only point where a
+  // leftover draft needs to be thrown away.
+  const draftSecretRowsRef = React.useRef<ISecretRow[] | null>(null);
+
   // Always open on the first tab rather than whichever tab was last viewed.
   React.useEffect(() => {
     if (props.open) {
       setActiveTab(0);
+    } else {
+      draftSecretRowsRef.current = null;
     }
   }, [props.open]);
 
@@ -71,6 +87,7 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
         <BaseImageSection
           baseImage={props.baseImage}
           resolvedDefaultBaseImage={props.resolvedDefaultBaseImage}
+          runtimeImages={props.runtimeImages}
           onUpdateBaseImage={props.onUpdateBaseImage}
         />
       ),
@@ -79,6 +96,16 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
       label: 'GPU',
       render: () => (
         <GpuSection
+          stepName={props.stepName}
+          limits={props.limits}
+          updateLimits={props.updateLimits}
+        />
+      ),
+    },
+    {
+      label: 'Memory',
+      render: () => (
+        <MemorySection
           stepName={props.stepName}
           limits={props.limits}
           updateLimits={props.updateLimits}
@@ -103,6 +130,16 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
         />
       ),
     },
+    {
+      label: 'Secrets',
+      render: () => (
+        <SecretsSection
+          secrets={props.secrets}
+          updateSecrets={props.updateSecrets}
+          draftRowsRef={draftSecretRowsRef}
+        />
+      ),
+    },
   ];
 
   return (
@@ -110,7 +147,7 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
       open={props.open}
       onClose={props.onClose}
       fullWidth
-      maxWidth="sm"
+      maxWidth="md"
       scroll="paper"
       aria-labelledby="step-config-dialog-title"
       aria-describedby="step-config-dialog-description"

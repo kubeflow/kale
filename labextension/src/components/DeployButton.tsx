@@ -79,6 +79,9 @@ export const SplitDeployButton: React.FunctionComponent<
   ) => {
     setSelectedIndex(index);
     setOpen(false);
+    if (!props.running && !props.disabled) {
+      props.handleClick(options[index].value);
+    }
   };
 
   const handleToggle = () => {

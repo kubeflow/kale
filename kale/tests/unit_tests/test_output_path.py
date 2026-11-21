@@ -153,6 +153,49 @@ class TestSaveCompiledCode:
 
 
 class TestOutputPathValidation:
+    @pytest.mark.parametrize(
+        "output_path", ["../project-other/output", "nested/../../project-other"]
+    )
+    def test_sibling_with_shared_prefix_is_rejected(self, tmp_path, monkeypatch, output_path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        with pytest.raises(ValueError, match="not a valid output directory"):
+            PipelineConfig(
+                pipeline_name="test-pipeline",
+                experiment_name="test-experiment",
+                output_path=output_path,
+            )
+
+    def test_symlink_to_sibling_with_shared_prefix_is_rejected(self, tmp_path, monkeypatch):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        outside_dir = tmp_path / "project-other"
+        outside_dir.mkdir()
+        (project_dir / "output").symlink_to(outside_dir, target_is_directory=True)
+        monkeypatch.chdir(project_dir)
+
+        with pytest.raises(ValueError, match="not a valid output directory"):
+            PipelineConfig(
+                pipeline_name="test-pipeline",
+                experiment_name="test-experiment",
+                output_path="output/pipelines",
+            )
+
+    @pytest.mark.parametrize("output_path", [".", "nested/../output", "project-other/output"])
+    def test_contained_paths_are_accepted(self, tmp_path, monkeypatch, output_path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        config = PipelineConfig(
+            pipeline_name="test-pipeline",
+            experiment_name="test-experiment",
+            output_path=output_path,
+        )
+        assert config.output_path == output_path
+
     def test_absolute_path_is_rejected(self):
         """Absolute paths like '/tmp/output' should be rejected."""
         with pytest.raises(ValueError, match="not a valid output directory"):

@@ -1,9 +1,9 @@
 name: E2E Test
-description: >
-  Installs Kale and runs example notebook on KFP to verify end-to-end workflow.
-  NOTE: This test may fail if -
-  uprgrading kfp version in Kale can break e2e test behavior, need to update KFP_VERSION in env var accordingly.
-  iris.ipynb (example notebook) - updates to this example notebook can break the artifact checks
+# Installs Kale and runs an example notebook on KFP. Update KFP_VERSION when
+# upgrading KFP, and recheck artifact assertions when changing iris.ipynb.
+
+permissions:
+  contents: read
 
 on:
   push:
@@ -84,6 +84,11 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: '22'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8
+        with:
+          version: "0.12.23"
 
       - name: Install Kale
         run: |

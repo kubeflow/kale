@@ -19,6 +19,11 @@ const baseConfig = require('@jupyterlab/galata/lib/playwright-config');
 
 module.exports = {
   ...baseConfig,
+  // Every test shares a single JupyterLab server, so run them one at a time
+  workers: 1,
+  // Absorb occasional timing flakes on slow CI runners
+  retries: process.env.CI ? 2 : 0,
+  timeout: 120 * 1000,
   use: {
     ...baseConfig.use,
     baseURL: 'http://localhost:8889',

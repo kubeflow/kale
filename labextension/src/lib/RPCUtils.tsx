@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as React from 'react';
 import { NotebookPanel } from '@jupyterlab/notebook';
 import { Kernel } from '@jupyterlab/services';
 import NotebookUtils from './NotebookUtils';
@@ -115,17 +114,6 @@ const getRpcCodeName = (code: number) => {
 };
 
 
-
-export const rokErrorTooltip = (rokError: IRPCError) => {
-  return (
-    <React.Fragment>
-      <div>
-        This feature requires Rok.{' '}
-        <a onClick={_ => showRpcError(rokError)}>More info...</a>
-      </div>
-    </React.Fragment>
-  );
-};
 
 const serialize = (obj: any) => window.btoa(JSON.stringify(obj));
 const deserialize = (raw_data: string) =>

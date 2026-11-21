@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASE_IMAGE=ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:latest
+# Update the version and multi-platform digest from the Kubeflow notebook image
+# registry together, then verify the image with make docker-build.
+ARG BASE_IMAGE=ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.11.0@sha256:8f8a000b7eece82c7e874924dc45a3922e9197137eefe67f55c711cc3ce068fd
 FROM ${BASE_IMAGE}
 
 USER root

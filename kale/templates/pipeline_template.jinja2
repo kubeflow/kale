@@ -1,90 +1,54 @@
+{% import '_step_config.jinja2' as step_config -%}
 import json
-import kfp.dsl as kfp_dsl
-from kfp.dsl import Input, Output, Dataset, HTML, Metrics, Artifact, Model
-from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context
+{% if returns %}from typing import NamedTuple
+{% endif %}{% if modules %}import os
+import sys
 
-{{ lightweight_components | join('\n\n') }}
+{% endif %}import kfp.dsl as kfp_dsl
+from kfp.dsl import Input, Output, Dataset, HTML, Metrics, Artifact, Model
+from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context, use_secret_as_env
+{%- if volumes | default([]) | selectattr('type', 'equalto', 'pvc') | list %}
+from kfp import kubernetes
+{%- endif %}
+{% if modules %}
+# The notebooks this one references are generated next to it; make them
+# importable regardless of where this script is executed from. kfp is imported
+# above, before the path mutation, so no generated module can shadow it.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+
+{% for m in modules %}from {{ m }} import {{ m }}_pipeline
+{% endfor %}{% endif %}
+{{ components | join('\n\n') }}
 
 @kfp_dsl.pipeline(
     name='{{ pipeline_name }}',
     description='{{ pipeline_description }}'
 )
-def auto_generated_pipeline(
-{%- for param_name, param_info in pipeline_param_info.items() %}
-    {{ param_name.lower() }}: {{ param_info.type }} = {% if param_info.type == 'bool' %}{{ param_info.default }}{% else %}{{ param_info.default | tojson }}{% endif %}{% if not loop.last %},{% endif %}
-{%- endfor %}
-):
-    """Auto-generated pipeline function."""
-
-{% set steps_list = pipeline.steps | list %}
-{% for step in steps_list %}
-    {{ step.name }}_task = {{ step.name }}_step(
-    {%- if step_inputs.get(step.name) %}
-        {%- for input_var in step_inputs[step.name] %}
-        {{ input_var }}_input_artifact={{ step_inputs_sources[step.name][input_var] }}_task.outputs["{{ input_var }}_output_artifact"]{% if not loop.last or pipeline_param_info %},{% endif %}
-        {%- endfor %}
-    {%- endif %}
-    {%- if pipeline_param_info %}
-        {%- for param_name, param_info in pipeline_param_info.items() %}
-        {{ param_info.clean_name }}={{ param_name.lower() }}{% if not loop.last %},{% endif %}
-        {%- endfor %}
-    {%- endif %}
+def {{ fn }}({{ signature }}){% if returns|length == 1 %} -> {{ returns[0].type }}{% elif returns|length > 1 %} -> NamedTuple('Outputs', [{% for o in returns %}('{{ o.var }}', {{ o.type }}){% if not loop.last %}, {% endif %}{% endfor %}]){% endif %}:
+    """{{ docstring }}"""
+{% for t in tasks %}
+    {{ t.task_var }} = {{ t.fn }}(
+    {%- for inp in t.inputs %}
+        {{ inp.arg }}={{ inp.ref }}{% if not loop.last %},{% endif %}
+    {%- endfor %}
     )
-{% if security_context.enabled %}
-    security_context.set_security_context(
-        task={{ step.name }}_task,
-        run_as_user={{ security_context.run_as_user }},
-        run_as_group={{ security_context.run_as_group }},
-        run_as_non_root={{ security_context.run_as_non_root }}
-    )
-{%- endif %}
-    {{ step.name }}_task.set_env_variable(name="HOME", value="/tmp")
-
-    {% if loop.index0 > 0 %}
-    {%- if step_inputs.get(step.name) %}
-    {%- for input_var in step_inputs[step.name] %}
-    {{ step.name }}_task.after({{ step_inputs_sources[step.name][input_var] }}_task)
-    {%- endfor %}
-    {%- else %}
-    {{ step.name }}_task.after({{ steps_list[loop.index0 - 1].name }}_task)
-    {%- endif %}
-    {% endif %}
-
-    {{ step.name }}_task.set_display_name("{{ component_names[step.name] }}-step")
-
-    {%- if step.config.enable_caching is not none %}
-    {{ step.name }}_task.set_caching_options(enable_caching={{ step.config.enable_caching }})
-    {%- elif enable_caching is not none and not enable_caching %}
-    {{ step.name }}_task.set_caching_options(enable_caching={{ enable_caching }})
-    {%- endif %}
-
-    {%- if step.config.limits %}
-    {%- for limit_key, limit_value in step.config.limits.items() %}
-    {%- if limit_key in ['nvidia.com/gpu', 'amd.com/gpu'] %}
-    {{ step.name }}_task.set_accelerator_type("{{ limit_key }}").set_accelerator_limit({{ limit_value }})
-    {%- endif %}
-    {%- endfor %}
-    {%- endif %}
-
-    {%- if step.config.labels %}
-    {%- for label_key, label_value in step.config.labels.items() %}
-    add_pod_label(task={{ step.name }}_task, label_key="{{ label_key }}", label_value="{{ label_value }}")
-    {%- endfor %}
-    {%- endif %}
-
-    {%- if step.config.annotations %}
-    {%- for ann_key, ann_value in step.config.annotations.items() %}
-    add_pod_annotation(task={{ step.name }}_task, annotation_key="{{ ann_key }}", annotation_value="{{ ann_value }}")
-    {%- endfor %}
-    {%- endif %}
-
+{%- if t.is_component %}{{ step_config.security(t.task_var, security_context) }}{% endif %}
+{% for a in t.after %}    {{ t.task_var }}.after({{ a }})
 {% endfor %}
+    {{ t.task_var }}.set_display_name("{{ t.display }}")
+{% if t.is_component %}{{- step_config.render(t.node, t.task_var, enable_caching, volumes) }}
+{%- else %}{{- step_config.caching(t.node, t.task_var, enable_caching) }}{% endif %}
+{% endfor %}
+{% if returns|length == 1 %}    return {{ returns[0].ref }}
+{% elif returns|length > 1 %}    return NamedTuple('Outputs', [{% for o in returns %}('{{ o.var }}', {{ o.type }}){% if not loop.last %}, {% endif %}{% endfor %}])({% for o in returns %}{{ o.var }}={{ o.ref }}{% if not loop.last %}, {% endif %}{% endfor %})
+{% endif %}
 
 if __name__ == "__main__":
     from kfp import compiler
 
-    pipeline_filename = auto_generated_pipeline.__name__ + '.yaml'
-    compiler.Compiler().compile(auto_generated_pipeline, pipeline_filename)
+    compiler.Compiler().compile({{ fn }}, "{{ pipeline_name }}.yaml")
 
-    print(f"Pipeline compiled to {pipeline_filename}")
+    print("Pipeline compiled to {{ pipeline_name }}.yaml")
     print("To run, upload this YAML to your KFP v2 instance or use kfp.Client().create_run_from_pipeline_func.")

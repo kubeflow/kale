@@ -1,7 +1,7 @@
 import json
 import kfp.dsl as kfp_dsl
 from kfp.dsl import Input, Output, Dataset, HTML, Metrics, Artifact, Model
-from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context
+from kfp.kubernetes import add_pod_annotation, add_pod_label, security_context, use_secret_as_env
 
 
 @kfp_dsl.component(
@@ -279,10 +279,7 @@ def evaluate_model_step(kale_metrics_artifact: Output[Metrics], model_input_arti
     name='iris-pipeline',
     description='Train a Random Forest classifier on the Iris dataset'
 )
-def auto_generated_pipeline(
-    n_estimators: int = 500,
-    max_depth: int = 2
-):
+def auto_generated_pipeline(n_estimators: int = 500, max_depth: int = 2):
     """Auto-generated pipeline function."""
 
     load_transform_data_task = load_transform_data_step(
@@ -299,6 +296,7 @@ def auto_generated_pipeline(
     load_transform_data_task.set_env_variable(name="HOME", value="/tmp")
 
     load_transform_data_task.set_display_name("load-transform-data-step")
+
     load_transform_data_task.set_caching_options(enable_caching=False)
     add_pod_label(task=load_transform_data_task,
                   label_key="access-ml-pipeline", label_value="true")
@@ -317,11 +315,10 @@ def auto_generated_pipeline(
         run_as_non_root=True
     )
     train_model_task.set_env_variable(name="HOME", value="/tmp")
-
-    train_model_task.after(load_transform_data_task)
     train_model_task.after(load_transform_data_task)
 
     train_model_task.set_display_name("train-model-step")
+
     train_model_task.set_caching_options(enable_caching=False)
     add_pod_label(task=train_model_task,
                   label_key="access-ml-pipeline", label_value="true")
@@ -341,12 +338,11 @@ def auto_generated_pipeline(
         run_as_non_root=True
     )
     evaluate_model_task.set_env_variable(name="HOME", value="/tmp")
-
+    evaluate_model_task.after(load_transform_data_task)
     evaluate_model_task.after(train_model_task)
-    evaluate_model_task.after(load_transform_data_task)
-    evaluate_model_task.after(load_transform_data_task)
 
     evaluate_model_task.set_display_name("evaluate-model-step")
+
     evaluate_model_task.set_caching_options(enable_caching=False)
     add_pod_label(task=evaluate_model_task,
                   label_key="access-ml-pipeline", label_value="true")
@@ -355,8 +351,7 @@ def auto_generated_pipeline(
 if __name__ == "__main__":
     from kfp import compiler
 
-    pipeline_filename = auto_generated_pipeline.__name__ + '.yaml'
-    compiler.Compiler().compile(auto_generated_pipeline, pipeline_filename)
+    compiler.Compiler().compile(auto_generated_pipeline, "iris-pipeline.yaml")
 
-    print(f"Pipeline compiled to {pipeline_filename}")
+    print("Pipeline compiled to iris-pipeline.yaml")
     print("To run, upload this YAML to your KFP v2 instance or use kfp.Client().create_run_from_pipeline_func.")
