@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   playwright:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned because lockfile has Playwright 1.57, which has no Chromium for ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
