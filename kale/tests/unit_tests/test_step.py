@@ -16,7 +16,7 @@
 import pytest
 
 from kale.pipeline import Pipeline, PipelineConfig
-from kale.step import Step, SubPipeline
+from kale.step import Artifact, Step, SubPipeline
 
 
 def _pipeline(name="child"):
@@ -107,3 +107,36 @@ def test_subpipeline_runs_its_child_steps(monkeypatch):
     sub.run({})
 
     assert ran == ["fit", "package"]
+
+
+def test_step_add_artifact_new():
+    """Test adding new input and output artifacts."""
+    step = Step(source=["x = 1"], name="my_step")
+    step.add_artifact("my_dataset", "Dataset", is_input=True)
+    step.add_artifact("my_model", "Model", is_input=False)
+
+    assert len(step.artifacts) == 2
+    assert step.artifacts[0] == Artifact(name="my_dataset", type="Dataset", is_input=True)
+    assert step.artifacts[1] == Artifact(name="my_model", type="Model", is_input=False)
+
+
+def test_step_add_artifact_update_existing_output():
+    """Test updating type of an existing untyped output artifact."""
+    step = Step(source=["x = 1"], name="my_step")
+    step.artifacts.append(Artifact(name="my_model", type=None, is_input=False))
+
+    step.add_artifact("my_model", "Model", is_input=False)
+
+    assert len(step.artifacts) == 1
+    assert step.artifacts[0] == Artifact(name="my_model", type="Model", is_input=False)
+
+
+def test_step_add_artifact_preserves_existing_typed_output():
+    """Test that an already-typed output artifact is not overwritten."""
+    step = Step(source=["x = 1"], name="my_step")
+    step.add_artifact("my_model", "Model", is_input=False)
+
+    step.add_artifact("my_model", "Dataset", is_input=False)
+
+    assert len(step.artifacts) == 1
+    assert step.artifacts[0].type == "Model"
