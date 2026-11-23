@@ -75,8 +75,9 @@ def get_annotation_or_label_from_tag(tag_parts):
 
     Returns (tuple): key (annotation or label name), values
     """
-    # Since value can be anything, merge together everything that's left.
-    return tag_parts[0], "".join(tag_parts[1:])
+    # The value can be anything, including ':' (URLs, timestamps, JSON), so
+    # put back the separators that splitting the tag removed.
+    return tag_parts[0], TAG_SEPARATOR.join(tag_parts[1:])
 
 
 def get_limit_from_tag(tag_parts):
