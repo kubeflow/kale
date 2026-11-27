@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Current Test File",
+      "type": "debugpy", "request": "launch",
+      "module": "pytest", "args": ["${file}", "-vv"],
+      "console": "integratedTerminal", "justMyCode": false
+    },
+    {
+      "name": "Debug All Unit Tests",
+      "type": "debugpy", "request": "launch",
+      "module": "pytest", "args": ["kale/tests/unit_tests", "-vv"],
+      "console": "integratedTerminal", "justMyCode": false
+    },
+    {
+      "name": "Debug Kale CLI",
+      "type": "debugpy", "request": "launch",
+      "module": "kale.cli",
+      "args": ["--nb", "${input:notebookPath}"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug JupyterLab",
+      "type": "debugpy", "request": "launch",
+      "module": "jupyterlab", "args": ["--no-browser"],
+      "console": "integratedTerminal", "justMyCode": false
+    },
+    {
+      "name": "Debug Frontend Tests (Jest)",
+      "type": "node", "request": "launch",
+      "cwd": "${workspaceFolder}/labextension",
+      "program": "${workspaceFolder}/labextension/node_modules/jest/bin/jest.js",
+      "args": ["--runInBand", "${file}"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug Frontend (Chrome)",
+      "type": "chrome", "request": "launch",
+      "url": "http://localhost:8888/lab",
+      "webRoot": "${workspaceFolder}/labextension"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "notebookPath", "type": "promptString",
+      "description": "Notebook to compile",
+      "default": "examples/titanic-ml-dataset/titanic_dataset_ml.ipynb"
+    }
+  ]
+}
