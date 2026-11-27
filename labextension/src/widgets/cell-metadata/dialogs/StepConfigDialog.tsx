@@ -25,9 +25,8 @@ import {
 } from '@mui/material';
 import { ISecretRef } from '../../../lib/TagsUtils';
 import { BaseImageSection } from './sections/BaseImageSection';
-import { GpuSection } from './sections/GpuSection';
 import { ILimitAction } from './sections/limits';
-import { MemorySection } from './sections/MemorySection';
+import { LimitsSection } from './sections/LimitsSection';
 import { CacheSection } from './sections/CacheSection';
 import { ReportSection } from './sections/ReportSection';
 import { ISecretRow, SecretsSection } from './sections/SecretsSection';
@@ -41,7 +40,7 @@ interface IStepConfigDialogProps {
   resolvedDefaultBaseImage: string;
   onUpdateBaseImage: (value: string) => void;
   runtimeImages: Record<string, string>;
-  // GPU / limits
+  // Resource limits (CPU, memory, GPU)
   limits: { [id: string]: string };
   updateLimits: (actions: ILimitAction[]) => void;
   // Caching
@@ -93,19 +92,9 @@ export const StepConfigDialog: React.FC<IStepConfigDialogProps> = props => {
       ),
     },
     {
-      label: 'GPU',
+      label: 'Limits',
       render: () => (
-        <GpuSection
-          stepName={props.stepName}
-          limits={props.limits}
-          updateLimits={props.updateLimits}
-        />
-      ),
-    },
-    {
-      label: 'Memory',
-      render: () => (
-        <MemorySection
+        <LimitsSection
           stepName={props.stepName}
           limits={props.limits}
           updateLimits={props.updateLimits}
