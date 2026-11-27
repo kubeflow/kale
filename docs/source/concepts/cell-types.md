@@ -169,9 +169,9 @@ A step cell can carry additional tags to customize its pod spec:
 - **`image:<image>`** — use a custom base image for just this step.
 - **`limit:<resource>:<value>`** — set a resource limit for the step.
   Supported resources are GPUs (`limit:nvidia.com/gpu:1`,
-  `limit:amd.com/gpu:1`) and memory (`limit:memory:8Gi`). You can also set
-  them in the **GPU** and **Memory** tabs of the step's Configure Step dialog.
-  Other resources, such as `cpu`, are not applied yet.
+  `limit:amd.com/gpu:1`), CPU (`limit:cpu:500m`, `limit:cpu:2`) and memory
+  (`limit:memory:8Gi`). You can also set them in the **Limits** tab of the
+  step's Configure Step dialog.
 
 #### Memory limit values
 
@@ -185,7 +185,7 @@ accepts:
 | `K`, `M`, `G`, `T`, `P`, `E` | powers of 1000 | `500M`, `1G` |
 
 Decimals, spaces and lowercase units are not accepted: write `1536Mi`
-instead of `1.5Gi`, and `2Gi` instead of `2 Gi` or `2gi`. The Memory tab only
+instead of `1.5Gi`, and `2Gi` instead of `2 Gi` or `2gi`. The Limits tab only
 saves values in this format.
 - **`annotation:<k>:<v>`** / **`label:<k>:<v>`** — add Kubernetes metadata
   to the step's pod. Useful for cost allocation, scheduling hints, or
