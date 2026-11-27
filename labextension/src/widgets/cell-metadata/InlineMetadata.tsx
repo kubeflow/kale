@@ -24,7 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { CellMetadataContext } from '../../lib/CellMetadataContext';
 import { ISecretRef } from '../../lib/TagsUtils';
 import { getRuntimeImageName, RuntimeImages } from '../../lib/runtimeImages';
-import { getGpuType } from './dialogs/sections/GpuSection';
+import { getGpuType } from './dialogs/sections/limits';
 
 interface IProps {
   stepName: string;
@@ -160,6 +160,12 @@ export const InlineMetadata: React.FC<IProps> = ({
     </p>
   ) : null;
 
+  const cpuLimitText = limits['cpu'] ? (
+    <p style={{ fontStyle: 'italic', marginLeft: '10px' }}>
+      CPU limit: {limits['cpu']}
+    </p>
+  ) : null;
+
   const baseImageName = baseImage
     ? getRuntimeImageName(runtimeImages, baseImage)
     : undefined;
@@ -218,6 +224,7 @@ export const InlineMetadata: React.FC<IProps> = ({
         ) : null}
         {dependencies}
         {limitsText}
+        {cpuLimitText}
         {memoryLimitText}
         {baseImageText}
         {cacheText}
