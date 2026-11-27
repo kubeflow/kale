@@ -152,6 +152,56 @@ def get_marshal_candidates(code):
     return names
 
 
+@lru_cache(maxsize=128)
+def get_assigned_names(code):
+    """Get the names that the code assigns in the global scope.
+
+    Only bindings count, not reads: assignment, augmented and annotated
+    assignment with a value, walrus, ``for`` and ``with`` targets, imports
+    and function or class definitions. Bodies of functions, classes,
+    lambdas and comprehensions are local scopes and are not searched.
+
+    Args:
+        code (str): multiple string representing Python code
+
+    Returns (set(str)): the assigned names
+    """
+    local_scopes = (
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.Lambda,
+        ast.ListComp,
+        ast.SetComp,
+        ast.DictComp,
+        ast.GeneratorExp,
+    )
+    names = set()
+    tree = ast.parse(utils.comment_magic_commands(code))
+    # an annotation without a value declares a name but binds nothing
+    bare_annotations = {
+        id(node.target)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AnnAssign) and node.value is None
+    }
+    for block in tree.body:
+        for node in walk(block, stop_at=local_scopes):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                names.add(node.name)
+            elif (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Store)
+                and id(node) not in bare_annotations
+            ):
+                names.add(node.id)
+            elif isinstance(node, ast.Import | ast.ImportFrom):
+                names.update(alias.asname or alias.name for alias in node.names)
+        for node in walk(block, ignore=local_scopes[:4]):
+            if isinstance(node, ast.NamedExpr):
+                names.add(node.target.id)
+    return names
+
+
 def parse_functions(code):
     """Parse all the global functions present in the input code.
 
